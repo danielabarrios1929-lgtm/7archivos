@@ -10,7 +10,8 @@ import {
     AlertCircle,
     BrainCircuit,
     Loader2,
-    ChevronRight
+    ChevronRight,
+    Play
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -119,6 +120,29 @@ export const Uploader = ({ onAnalysisStart, isAnalyzing }: UploaderProps) => {
 
     const [institutionName, setInstitutionName] = useState("");
     const [tutorName, setTutorName] = useState("");
+    const [isDemoLoading, setIsDemoLoading] = useState(false);
+
+    // Función para activar el Modo Demo (Simulado para que el usuario no suba nada)
+    const activateDemoMode = async () => {
+        setIsDemoLoading(true);
+        setInstitutionName("I.E. Técnica Agroindustrial (DEMO)");
+        setTutorName("Auditor Senior Demo");
+
+        // Simulamos la carga de archivos de prueba
+        // En un entorno de servidor real, estos archivos estarían en el backend
+        // Para esta demo, creamos Blobs de prueba que representan los documentos
+        const demoFiles: Record<string, File> = {};
+        const dummyContent = "Este es un documento de prueba técnica para la auditoría PTAFI-AI.";
+
+        MANDATORY_FILES.slice(0, 7).forEach(slot => {
+            const blob = new Blob([dummyContent], { type: 'application/pdf' });
+            const file = new File([blob], `${slot.id}_Demo.pdf`, { type: 'application/pdf' });
+            demoFiles[slot.id] = file;
+        });
+
+        setFiles(prev => ({ ...prev, ...demoFiles }));
+        setIsDemoLoading(false);
+    };
 
     const hasFiles = Object.values(files).some(f => f !== null);
     const isReady = institutionName && tutorName && hasFiles;
@@ -196,9 +220,14 @@ export const Uploader = ({ onAnalysisStart, isAnalyzing }: UploaderProps) => {
                 >
                     <div className="flex items-center justify-between px-2">
                         <h3 className="text-lg font-bold text-gray-200 uppercase tracking-tighter">Documentos de Auditoría</h3>
-                        <span className="text-xs font-mono text-gray-500">
-                            {Object.values(files).filter(f => f).length} Archivo(s)
-                        </span>
+                        <button
+                            onClick={activateDemoMode}
+                            disabled={isDemoLoading || isAnalyzing}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-full text-[10px] font-black uppercase tracking-widest text-blue-400 transition-all"
+                        >
+                            {isDemoLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                            Modo Demo
+                        </button>
                     </div>
 
                     <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
