@@ -1,0 +1,12 @@
+MATRIZ DE SISTEMATIZACIÓN DE HALLAZGOS - I.E. GUAIMARAL
+
+Categoría de análisis       | Hallazgo identificado                    | Evidencia recogida            | Interpretación pedagógica                 | Implicación para el PFI
+---------------------------|------------------------------------------|-------------------------------|-------------------------------------------|-------------------------------------------
+Contexto territorial       | Predomina actividad agrícola familiar y comercio informal | Entrevistas con familias     | El entorno rural es un recurso pedagógico  | Diseñar CI relacionados con agroecología y economía local
+Intereses estudiantiles    | Alto interés en tecnología, arte y deportes              | Talleres con estudiantes     | Necesidad de metodologías activas y prácticas | Crear CI de robótica, multimedia y arte digital
+Cultura y saberes locales  | Presencia de saberes tradicionales y prácticas culturales | Conversatorio comunitario | Los saberes locales deben integrarse al currículo | CI de memoria cultural y saberes ancestrales
+Fortalezas institucionales | Docentes con experiencia en trabajo colaborativo         | Actas consejo académico     | Base sólida para comunidades de aprendizaje | Fortalecer equipos docentes interdisciplinarios
+Problemáticas educativas   | Bajo desempeño en matemáticas y lectura                 | Resultados académicos       | Necesidad de fortalecer pensamiento lógico y comprensión | Integrar matemáticas y lenguaje en CI interdisciplinarios
+Recursos institucionales   | Disponibilidad de espacios abiertos y zonas verdes       | Observación institucional   | Posibilidad de aprendizaje experiencial al aire libre | Desarrollar CI ambientales y científicos
+Evaluación pedagógica      | Predomina evaluación sumativa tradicional               | Análisis del SIEE            | Es necesario fortalecer la evaluación formativa | Ajustar estrategias evaluativas en los CI
+Convivencia escolar        | Conflictos menores entre estudiantes                    | Informe de convivencia      | Se requieren estrategias socioemocionales | CI orientados a convivencia y ciudadanía

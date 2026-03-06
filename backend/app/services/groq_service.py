@@ -55,24 +55,32 @@ ESTRUCTURA JSON OBLIGATORIA:
     {
       "pillar_name": "Pertinencia Contextual",
       "score": 8,
-      "analysis": "analisis detallado del pilar",
+      "analysis": "Analiza si la institución responde al territorio (Relación escuela-comunidad, Problemáticas, Intereses, Saberes locales).",
       "recommendations": ["recomendacion 1", "recomendacion 2"]
     },
     {
-      "pillar_name": "Coherencia Pedagogica",
-      "score": 7, "analysis": "...", "recommendations": ["...", "..."]
+      "pillar_name": "Coherencia Institucional",
+      "score": 7, 
+      "analysis": "Analiza si los documentos (PEI, Proyectos, Centros de Interés) están articulados con la formación integral.", 
+      "recommendations": ["...", "..."]
     },
     {
-      "pillar_name": "Articulacion Documental",
-      "score": 7, "analysis": "...", "recommendations": ["...", "..."]
+      "pillar_name": "Articulación Curricular",
+      "score": 7, 
+      "analysis": "Evidencia relación entre Áreas académicas, Centros de interés y Proyectos para superar fragmentación.", 
+      "recommendations": ["...", "..."]
     },
     {
-      "pillar_name": "Participacion Comunitaria",
-      "score": 6, "analysis": "...", "recommendations": ["...", "..."]
+      "pillar_name": "Participación de la Comunidad",
+      "score": 6, 
+      "analysis": "Nivel de inclusión de estudiantes, docentes, directivos y familias en el diagnóstico.", 
+      "recommendations": ["...", "..."]
     },
     {
-      "pillar_name": "Condiciones para el Aprendizaje",
-      "score": 7, "analysis": "...", "recommendations": ["...", "..."]
+      "pillar_name": "Condiciones para implementar PFI",
+      "score": 7, 
+      "analysis": "Disponibilidad de liderazgo, tiempos en horario, recursos pedagógicos y compromiso docente.", 
+      "recommendations": ["...", "..."]
     }
   ]
 }"""
