@@ -24,4 +24,5 @@ class AnalysisResponse(BaseModel):
     matrix: List[MatrixCategory] = []
     quality_report: List[QualityPillar] = []
     integrity_check: Optional[dict] = None
+    pdf_base64: Optional[str] = None
     status: str = "success"

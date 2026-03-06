@@ -1,97 +1,92 @@
-﻿from weasyprint import HTML
-import jinja2
-from datetime import datetime
-import os
+﻿from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+import io
 
-TEMPLATE_HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body { font-family: 'Helvetica', sans-serif; color: #333; line-height: 1.6; }
-        .header { text-align: center; border-bottom: 4px solid #1a365d; padding-bottom: 20px; }
-        .title { font-size: 28px; color: #1a365d; margin-bottom: 5px; }
-        .subtitle { font-size: 14px; color: #666; }
-        .pillar-card { margin-top: 30px; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px; }
-        .pillar-name { font-size: 20px; color: #2b6cb0; font-weight: bold; }
-        .score { float: right; font-size: 24px; color: #2f855a; font-weight: bold; }
-        .recommendation-list { background: #f7fafc; padding: 15px; border-left: 4px solid #2b6cb0; }
-        .matrix-table { width: 100%; border-collapse: collapse; margin-top: 40px; }
-        .matrix-table th { background: #1a365d; color: white; padding: 10px; text-align: left; }
-        .matrix-table td { border: 1px solid #cbd5e0; padding: 10px; font-size: 12px; }
-        .footer { position: fixed; bottom: 0; width: 100%; text-align: center; font-size: 10px; color: #aaa; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="title">INFORME DE CALIDAD PTAFI-AI</div>
-        <div class="subtitle">AuditorÃ­a Multidocumental Concurrente - {{ institution_name }}</div>
-        <div class="subtitle">Tutor: {{ tutor_name }} | Fecha: {{ date }}</div>
-    </div>
+class ReportGenerator:
+    def __init__(self):
+        self.styles = getSampleStyleSheet()
+        self._setup_custom_styles()
 
-    <h2>1. Los 5 Pilares de Excelencia</h2>
-    {% for pillar in quality_report %}
-    <div class="pillar-card">
-        <span class="score">{{ pillar.score }}/10</span>
-        <div class="pillar-name">{{ pillar.pillar_name }}</div>
-        <p>{{ pillar.analysis }}</p>
-        <div class="recommendation-list">
-            <strong>Recomendaciones EstratÃ©gicas:</strong>
-            <ul>
-                {% for rec in pillar.recommendations %}
-                <li>{{ rec }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-    </div>
-    {% endfor %}
+    def _setup_custom_styles(self):
+        self.styles.add(ParagraphStyle(
+            name='TitlePrimary',
+            parent=self.styles['Title'],
+            fontSize=24,
+            spaceAfter=30,
+            textColor=colors.HexColor("#1e3a8a"),  # Blue 900
+            alignment=TA_CENTER
+        ))
+        self.styles.add(ParagraphStyle(
+            name='SectionHeader',
+            fontSize=16,
+            spaceBefore=20,
+            spaceAfter=15,
+            textColor=colors.HexColor("#2563eb"),  # Blue 600
+            fontName='Helvetica-Bold'
+        ))
+        self.styles.add(ParagraphStyle(
+            name='HallazgoTitle',
+            fontSize=12,
+            spaceBefore=10,
+            fontName='Helvetica-Bold',
+            textColor=colors.HexColor("#4b5563")  # Gray 600
+        ))
+        self.styles.add(ParagraphStyle(
+            name='EvidenceStyle',
+            fontSize=10,
+            leftIndent=20,
+            firstLineIndent=0,
+            fontName='Helvetica-Oblique',
+            textColor=colors.HexColor("#6b7280")  # Gray 500
+        ))
 
-    <div style="page-break-before: always;"></div>
+    def generate_pdf(self, data: dict) -> bytes:
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=72)
+        elements = []
 
-    <h2>2. Matriz Suprema de SistematizaciÃ³n</h2>
-    <table class="matrix-table">
-        <thead>
-            <tr>
-                <th>CategorÃ­a</th>
-                <th>Hallazgo Principal</th>
-                <th>InterpretaciÃ³n PedagÃ³gica</th>
-                <th>ImplicaciÃ³n PFI</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in matrix %}
-            <tr>
-                <td><strong>{{ item.category_name }}</strong></td>
-                <td>{{ item.hallazgo }}</td>
-                <td>{{ item.interpretacion }}</td>
-                <td>{{ item.implicacion_pfi }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+        # --- Portada ---
+        elements.append(Paragraph("INFORME DE AUDITORÍA PEDAGÓGICA", self.styles['TitlePrimary']))
+        elements.append(Paragraph(f"Institución: {data['institution_info']['name']}", self.styles['Heading2']))
+        elements.append(Paragraph(f"Tutor Responsable: {data['institution_info']['tutor']}", self.styles['Normal']))
+        elements.append(Spacer(1, 40))
 
-    <div class="footer">
-        Generado automÃ¡ticamente por el Motor de Inferencia PTAFI-AI v1.5 - Sistema de Inteligencia Artificial para la Excelencia Educativa.
-    </div>
-</body>
-</html>
-"""
-
-class ReporterService:
-    @staticmethod
-    def generate_pdf(analysis_data: dict) -> bytes:
-        """Genera un reporte PDF con diseÃ±o editorial premium."""
-        template = jinja2.Template(TEMPLATE_HTML)
-        html_content = template.render(
-            institution_name=analysis_data['institution_info']['name'],
-            tutor_name=analysis_data['institution_info']['tutor'],
-            date=datetime.now().strftime("%d/%m/%Y"),
-            quality_report=analysis_data['quality_report'],
-            matrix=analysis_data['matrix']
-        )
+        # --- 1. Matriz de Hallazgos ---
+        elements.append(Paragraph("1. MATRIZ DE SISTEMATIZACIÓN DE HALLAZGOS", self.styles['SectionHeader']))
         
-        # Generar PDF usando WeasyPrint
-        pdf_bytes = HTML(string=html_content).write_pdf()
-        return pdf_bytes
+        for item in data.get('matrix', []):
+            elements.append(Paragraph(f"Categoría: {item['category_name']}", self.styles['HallazgoTitle']))
+            elements.append(Paragraph(f"<b>Hallazgo:</b> {item['hallazgo']}", self.styles['Normal']))
+            
+            evid = item.get('evidencia', {})
+            elements.append(Paragraph(f"<b>Evidencia:</b> \"{evid.get('text', 'N/A')}\" (Doc: {evid.get('document_name', 'N/A')})", self.styles['EvidenceStyle']))
+            
+            elements.append(Paragraph(f"<b>Interpretación Pedagógica:</b> {item['interpretacion']}", self.styles['Normal']))
+            elements.append(Paragraph(f"<b>Implicación para el PFI:</b> {item['implicacion_pfi']}", self.styles['Normal']))
+            elements.append(Spacer(1, 15))
 
-reporter = ReporterService()
+        elements.append(PageBreak())
+
+        # --- 2. Reporte de Calidad (Pilares) ---
+        elements.append(Paragraph("2. REPORTE DE CALIDAD (PILARES ESTRATÉGICOS)", self.styles['SectionHeader']))
+        
+        for p in data.get('quality_report', []):
+            elements.append(Paragraph(f"{p['pillar_name']} - Puntaje: {p['score']}/10", self.styles['HallazgoTitle']))
+            elements.append(Paragraph(f"<b>Análisis:</b> {p['analysis']}", self.styles['Normal']))
+            
+            recs = p.get('recommendations', [])
+            if recs:
+                elements.append(Paragraph("<b>Recomendaciones:</b>", self.styles['Normal']))
+                for r in recs:
+                    elements.append(Paragraph(f"• {r}", self.styles['Normal']))
+            elements.append(Spacer(1, 15))
+
+        doc.build(elements)
+        pdf_value = buffer.getvalue()
+        buffer.close()
+        return pdf_value
+
+pdf_reporter = ReportGenerator()

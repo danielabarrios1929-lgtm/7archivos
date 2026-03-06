@@ -122,22 +122,29 @@ export const Uploader = ({ onAnalysisStart, isAnalyzing }: UploaderProps) => {
     const [tutorName, setTutorName] = useState("");
     const [isDemoLoading, setIsDemoLoading] = useState(false);
 
-    // Función para activar el Modo Demo (Simulado para que el usuario no suba nada)
+    // Función para activar el Modo Demo (Con contenido REAL de Guaimaral)
     const activateDemoMode = async () => {
         setIsDemoLoading(true);
-        setInstitutionName("I.E. Técnica Agroindustrial (DEMO)");
-        setTutorName("Auditor Senior Demo");
+        setInstitutionName("I.E. Guaimaral (Modo Demo Real)");
+        setTutorName("Auditor Especialista PTAFI");
 
-        // Simulamos la carga de archivos de prueba
-        // En un entorno de servidor real, estos archivos estarían en el backend
-        // Para esta demo, creamos Blobs de prueba que representan los documentos
         const demoFiles: Record<string, File> = {};
-        const dummyContent = "Este es un documento de prueba técnica para la auditoría PTAFI-AI.";
 
-        MANDATORY_FILES.slice(0, 7).forEach(slot => {
-            const blob = new Blob([dummyContent], { type: 'application/pdf' });
-            const file = new File([blob], `${slot.id}_Demo.pdf`, { type: 'application/pdf' });
-            demoFiles[slot.id] = file;
+        // Mapeo de contenidos reales que ya tenemos en test_pdfs
+        const demoDocs = [
+            { id: 'PEI', name: 'PEI_REAL.txt', content: "PROYECTO EDUCATIVO INSTITUCIONAL (PEI) - I.E. GUAIMARAL\n\nModelo Pedagógico: Constructivismo Social con enfoque territorial.\nIdentidad: Formación integral de jóvenes rurales en Tubará, Atlántico.\nEjes Transversales: Agroecología, Tecnología, Emprendimiento Local y Valores Ciudadanos." },
+            { id: 'MC', name: 'MANUAL_CONVIVENCIA_REAL.txt', content: "MANUAL DE CONVIVENCIA - I.E. GUAIMARAL\n\nPrincipios: Respeto por la diversidad cultural (indígena y afro), solidaridad y diálogo.\nResolución de Conflictos: Se prioriza la mediación escolar." },
+            { id: 'PMI', name: 'PMI_REAL.txt', content: "PLAN DE MEJORAMIENTO INSTITUCIONAL (PMI) - I.E. GUAIMARAL\n\nObjetivo: Mejorar los resultados en matemáticas y lectura. Meta: Implementar estrategias de nivelación para el tercer periodo." },
+            { id: 'POA', name: 'POA_REAL.txt', content: "PLAN OPERATIVO ANUAL (POA) - 2026\n\nMetas: 1. Implementación al 100% de los CI de robótica y agroecología. 2. Capacitación docente en PTAFI 3.0." },
+            { id: 'SIEE', name: 'SIEE_REAL.txt', content: "SISTEMA INSTITUCIONAL DE EVALUACIÓN DE ESTUDIANTES (SIEE) - I.E. GUAIMARAL\n\nCriterios: Evaluaciones Sumativas 60%, Formativas 40%. Se detecta evaluación tradicional." },
+            { id: 'LC', name: 'LECTURA_DE_CONTEXTO_REAL.txt', content: "INFORME DE DIAGNÓSTICO PARTICIPATIVO - I.E. GUAIMARAL\nUbicación: Tubará, Atlántico. Predomina actividad agrícola familiar y comercio informal." },
+            { id: 'PFI', name: 'PFI_GUAIMARAL.txt', content: "PLAN DE FORMACIÓN INTEGRAL (PFI) 2026 - I.E. GUAIMARAL\nCI: Agro-Tec, Guardianes de la Memoria, Matemáticas en la Tierra." }
+        ];
+
+        demoDocs.forEach(doc => {
+            const blob = new Blob([doc.content], { type: 'text/plain' });
+            const file = new File([blob], doc.name, { type: 'text/plain' });
+            demoFiles[doc.id] = file;
         });
 
         setFiles(prev => ({ ...prev, ...demoFiles }));
@@ -223,10 +230,10 @@ export const Uploader = ({ onAnalysisStart, isAnalyzing }: UploaderProps) => {
                         <button
                             onClick={activateDemoMode}
                             disabled={isDemoLoading || isAnalyzing}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-full text-[10px] font-black uppercase tracking-widest text-blue-400 transition-all"
+                            className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-full text-[10px] font-black uppercase tracking-widest text-blue-400 transition-all font-bold shadow-lg shadow-blue-500/10"
                         >
                             {isDemoLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
-                            Modo Demo
+                            MODO DEMO GUAIMARAL (REAL)
                         </button>
                     </div>
 

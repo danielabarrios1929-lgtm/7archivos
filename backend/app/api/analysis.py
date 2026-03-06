@@ -2,7 +2,9 @@
 from typing import List, Dict
 from app.services.processor import processor
 from app.services.groq_service import groq_service
+from app.services.reporter import pdf_reporter
 import logging
+import base64
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -52,6 +54,14 @@ async def process_analysis(
             },
             "status": "success"
         }
+        
+        # 6. Generar PDF (Base64)
+        try:
+            pdf_bytes = pdf_reporter.generate_pdf(response_data)
+            response_data["pdf_base64"] = base64.b64encode(pdf_bytes).decode('utf-8')
+        except Exception as pdf_err:
+            logger.error(f"Error generando PDF: {str(pdf_err)}")
+            response_data["pdf_base64"] = None
         
         return response_data
         

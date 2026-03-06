@@ -42,6 +42,7 @@ interface MatrixSupremaProps {
         };
         matrix: Finding[];
         quality_report: QualityPillar[];
+        pdf_base64?: string;
     };
 }
 
@@ -143,6 +144,21 @@ const QualityPillarCard = ({ pillar, index }: { pillar: QualityPillar; index: nu
 );
 
 export const MatrixSuprema = ({ analysis }: MatrixSupremaProps) => {
+    const handleDownloadPDF = () => {
+        if (!analysis.pdf_base64) {
+            alert("El informe PDF no está listo o hubo un error generándolo.");
+            return;
+        }
+
+        const linkSource = `data:application/pdf;base64,${analysis.pdf_base64}`;
+        const downloadLink = document.createElement("a");
+        const fileName = `Informe_Auditoria_${analysis.institution_info.name.replace(/\s+/g, '_')}.pdf`;
+
+        downloadLink.href = linkSource;
+        downloadLink.download = fileName;
+        downloadLink.click();
+    };
+
     return (
         <div className="min-h-screen bg-[#020205] text-white selection:bg-blue-500/30 selection:text-white">
             {/* Background elements */}
@@ -232,7 +248,10 @@ export const MatrixSuprema = ({ analysis }: MatrixSupremaProps) => {
                             ))}
                         </div>
 
-                        <button className="w-full relative group">
+                        <button
+                            onClick={handleDownloadPDF}
+                            className="w-full relative group"
+                        >
                             <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl blur opacity-30 group-hover:opacity-100 transition duration-500"></div>
                             <div className="relative px-8 py-5 bg-[#020205] border border-white/10 rounded-2xl flex items-center justify-center gap-3 font-bold text-sm tracking-widest uppercase transition-all duration-300 group-hover:bg-black/80">
                                 <FileText className="w-4 h-4 text-blue-400" />
