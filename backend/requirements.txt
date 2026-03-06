@@ -13,3 +13,4 @@ openpyxl
 Pillow
 jinja2
 groq
+reportlab
