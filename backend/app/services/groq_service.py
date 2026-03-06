@@ -1,5 +1,5 @@
 from groq import Groq
-from app.core.config import settings
+import os
 import json
 import logging
 
@@ -88,21 +88,27 @@ ESTRUCTURA JSON OBLIGATORIA:
 
 class GroqService:
     def __init__(self):
-        if not settings.GROQ_API_KEY:
-            logger.warning("GROQ_API_KEY no configurada.")
-            self.client = None
-            return
-        self.client = Groq(api_key=settings.GROQ_API_KEY)
+        # NO crear el cliente aquí - se crea lazy (cuando se necesita)
+        # Esto evita el error en Vercel donde las env vars cargan después de los imports
+        self._client = None
         self.model = "llama-3.3-70b-versatile"
+
+    @property
+    def client(self):
+        """Lazy initialization: crea el cliente solo cuando se necesita."""
+        if self._client is None:
+            api_key = os.environ.get("GROQ_API_KEY", "")
+            if not api_key:
+                raise Exception("GROQ_API_KEY no está configurada. Agrégala en Vercel → Settings → Environment Variables.")
+            self._client = Groq(api_key=api_key)
+            logger.info("Cliente Groq inicializado correctamente.")
+        return self._client
 
     async def analyze_documents(self, documents_text: str):
         """
         Analiza el contexto usando Groq (Llama 3.3-70b).
         Genera exactamente 6 categorías de matriz y 5 pilares de calidad.
         """
-        if not self.client:
-            raise Exception("Groq no está configurado. Verifica GROQ_API_KEY en el .env")
-
         # Groq llama-3.3-70b soporta hasta 128k tokens, truncamos a 80k chars (~20k tokens)
         truncated_text = documents_text[:80000]
 
@@ -113,6 +119,7 @@ class GroqService:
         )
 
         try:
+            # Groq SDK es síncrono - se llama directamente (no con await)
             completion = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
