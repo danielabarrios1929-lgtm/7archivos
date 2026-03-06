@@ -1,0 +1,25 @@
+# Gitignore for PTAFI-AI (Safe Local Edition)
+
+# Python 
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/.env
+
+# Node.js
+ptafi-frontend/node_modules/
+ptafi-frontend/.next/
+ptafi-frontend/out/
+ptafi-frontend/build/
+ptafi-frontend/.env*
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Test & Report files (Keep them or hide them? User wants a clean repo, but usually these are ignored)
+REAL_TEST_RESULT.json
+REPORTE_CONFIGURACION_Y_TESTEO.txt
+INFORME_ANALISIS_RESULTADOS.txt
+revisar_motor.py
+test_result.json
