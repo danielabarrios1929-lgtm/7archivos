@@ -106,20 +106,26 @@ class GroqService:
 
     async def analyze_documents(self, documents_text: str):
         """
-        Analiza el contexto usando Groq (Llama 3.3-70b).
-        Genera exactamente 6 categorías de matriz y 5 pilares de calidad.
+        Analiza documentos usando Groq (Llama 3.3-70b).
+        Limite: 128k tokens. Usamos los primeros 80k chars (~20k tokens) de forma segura.
+        Para textos muy grandes, el orquestador deberia usar Gemini con chunking.
         """
-        # Groq llama-3.3-70b soporta hasta 128k tokens, truncamos a 80k chars (~20k tokens)
-        truncated_text = documents_text[:80000]
+        GROQ_CHAR_LIMIT = 80_000
+
+        if len(documents_text) > GROQ_CHAR_LIMIT:
+            logger.warning(
+                f"[GROQ] Texto truncado: {len(documents_text):,} chars -> {GROQ_CHAR_LIMIT:,} chars. "
+                f"Para analisis completo de documentos grandes, usar Gemini."
+            )
+        truncated_text = documents_text[:GROQ_CHAR_LIMIT]
 
         user_prompt = (
-            "INICIA AUDITORÍA PEDAGÓGICA. Analiza los siguientes documentos institutionales y genera "
+            "INICIA AUDITORÍA PEDAGÓGICA. Analiza los siguientes documentos institucionales y genera "
             "la matriz de 6 categorías y el reporte de 5 pilares de calidad según el formato indicado.\n\n"
             f"DOCUMENTOS:\n{truncated_text}"
         )
 
         try:
-            # Groq SDK es síncrono - se llama directamente (no con await)
             completion = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -133,22 +139,22 @@ class GroqService:
             raw = completion.choices[0].message.content
             result = json.loads(raw)
 
-            # Validar que tiene la estructura correcta
             if "matrix" not in result or "quality_report" not in result:
                 raise ValueError(f"Respuesta JSON incompleta: faltan claves. Keys: {list(result.keys())}")
 
             logger.info(
-                f"Groq OK: {len(result['matrix'])} categorias, "
+                f"[GROQ OK] {len(result['matrix'])} categorias, "
                 f"{len(result['quality_report'])} pilares"
             )
             return result
 
         except json.JSONDecodeError as e:
-            logger.error(f"Groq devolvio JSON invalido: {e}")
+            logger.error(f"[GROQ] JSON invalido: {e}")
             raise Exception(f"El motor Groq devolvio una respuesta con formato invalido: {e}")
         except Exception as e:
-            logger.error(f"Error en GroqService: {str(e)}")
+            logger.error(f"[GROQ] Error: {str(e)}")
             raise e
 
 
 groq_service = GroqService()
+
