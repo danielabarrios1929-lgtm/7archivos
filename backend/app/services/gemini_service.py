@@ -1,52 +1,51 @@
 """
-GeminiService v2 — Motor Principal con Chunking Inteligente
-============================================================
-Mejoras sobre v1:
-  1. Chunking POR DOCUMENTO: cada doc se analiza en su propio contexto
-     → la IA no pierde el hilo entre documentos
-  2. Procesamiento PARALELO: todos los chunks se envian a la vez (asyncio)
-     → tiempo total = tiempo del chunk mas lento, no la suma
-  3. Sintesis final con IA: Groq (rapido) fusiona los hallazgos de todos
-     los chunks en un resultado cohesivo y sin redundancias
-  4. Retry automatico con backoff para errores de rate-limit
+GeminiService v3 — Chunking Robusto y Estable
+==============================================
+Fixes v3:
+  - Chunks mucho mas pequenos (80k chars) para evitar JSON truncado
+  - Eliminado response_mime_type (no soportado en gemini-2.5-flash)
+  - Sintesis liviana: solo envia resumen reducido a Groq (no JSON completo)
+  - Retry mas agresivo con mayor espera entre intentos
 """
 
 import os
 import json
 import asyncio
 import logging
-from typing import List, Dict
+import re
+from typing import List
 import google.generativeai as genai
 from app.services.groq_service import SYSTEM_PROMPT, groq_service
 
 logger = logging.getLogger(__name__)
 
 # ── Umbrales ───────────────────────────────────────────────────────────────────
+# CONSERVADORES para tier gratuito de Gemini
 GROQ_THRESHOLD_CHARS = 40_000   # < esto → Groq directo (rapido)
-GEMINI_MAX_CHARS     = 500_000  # Limite seguro por peticion unica (~125k tokens)
-GEMINI_CHUNK_SIZE    = 460_000  # Tamaño de chunk con margen de seguridad
+GEMINI_MAX_CHARS     = 80_000   # Limite seguro peticion unica (~20k tokens)
+GEMINI_CHUNK_SIZE    = 70_000   # Tamano de cada chunk (~17k tokens, margen seguro)
 
 # ── Modelo ─────────────────────────────────────────────────────────────────────
 GEMINI_MODEL = "gemini-2.5-flash"
 
-# ── Prompt de Sintesis (para fusionar resultados de chunks con Groq) ───────────
+# ── Prompt de Sintesis Liviano ──────────────────────────────────────────────────
 SYNTHESIS_SYSTEM_PROMPT = """Eres un SINTETIZADOR DE AUDITORIAS PEDAGOGICAS.
-Recibes multiples analisis parciales de diferentes fragmentos de documentos institucionales
-y debes fusionarlos en un UNICO resultado cohesivo y completo.
+Recibes multiples analisis parciales de fragmentos de documentos y debes
+fusionarlos en UN UNICO resultado JSON cohesivo.
 
 REGLAS:
-1. Responde UNICAMENTE con JSON valido, sin texto adicional.
-2. Para cada categoria de la matrix, selecciona y COMBINA los hallazgos mas relevantes de cada fragmento.
-3. Para cada pilar de calidad, PROMEDIA los scores y COMBINA las recomendaciones, eliminando duplicados.
-4. El resultado debe tener EXACTAMENTE 6 categorias en matrix y EXACTAMENTE 5 pilares en quality_report.
-5. Cita siempre el documento fuente original en evidencia.
+1. Responde UNICAMENTE con JSON valido, SIN texto adicional, SIN markdown.
+2. matrix: EXACTAMENTE 6 objetos (uno por categoria).
+3. quality_report: EXACTAMENTE 5 objetos (uno por pilar).
+4. Combina hallazgos de todos los fragmentos, eliminando redundancias.
+5. Para scores: calcula el promedio de todos los fragmentos.
 
-Devuelve el mismo formato JSON que los analisis parciales:
-{"matrix": [...], "quality_report": [...]}"""
+Formato de salida:
+{"matrix": [...6 items...], "quality_report": [...5 items...]}"""
 
 
 class GeminiService:
-    """Motor de analisis Gemini 2.5 Flash con chunking por documento y paralelismo."""
+    """Motor Gemini 2.5 Flash con chunking robusto y procesamiento paralelo."""
 
     def __init__(self):
         self._model = None
@@ -56,137 +55,176 @@ class GeminiService:
         if self._model is None:
             api_key = os.environ.get("GOOGLE_API_KEY", "")
             if not api_key:
-                raise Exception(
-                    "GOOGLE_API_KEY no esta configurada. "
-                    "Agregala en .env o en Vercel → Settings → Environment Variables."
-                )
+                raise Exception("GOOGLE_API_KEY no configurada.")
             genai.configure(api_key=api_key)
+            # SIN response_mime_type — no soportado en gemini-2.5-flash
             self._model = genai.GenerativeModel(
                 model_name=GEMINI_MODEL,
                 generation_config=genai.GenerationConfig(
                     temperature=0.1,
-                    max_output_tokens=8192,
-                    response_mime_type="application/json",
+                    max_output_tokens=4096,
                 ),
                 system_instruction=SYSTEM_PROMPT,
             )
             logger.info(f"[GEMINI] Modelo listo: {GEMINI_MODEL}")
         return self._model
 
+    # ── Parser JSON Robusto ─────────────────────────────────────────────────────
+
+    def _parse_json(self, raw_text: str) -> dict:
+        """
+        Parsea JSON de forma robusta:
+        1. Intenta parseo directo
+        2. Si falla, busca el bloque JSON dentro del texto
+        3. Si falla, intenta reparar JSON truncado
+        """
+        raw = raw_text.strip()
+
+        # Limpiar bloques markdown ```json ... ```
+        if "```" in raw:
+            match = re.search(r'```(?:json)?\s*([\s\S]*?)```', raw)
+            if match:
+                raw = match.group(1).strip()
+
+        # Intento 1: parseo directo
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            pass
+
+        # Intento 2: buscar el primer bloque { ... } del texto
+        brace_start = raw.find('{')
+        brace_end = raw.rfind('}')
+        if brace_start != -1 and brace_end != -1 and brace_end > brace_start:
+            try:
+                return json.loads(raw[brace_start:brace_end + 1])
+            except json.JSONDecodeError:
+                pass
+
+        # Intento 3: JSON truncado — intentar encontrar el ultimo objeto completo
+        # Buscar hasta donde el JSON es valido
+        for end in range(len(raw), 0, -1):
+            candidate = raw[:end]
+            # Cerrar brackets abiertos
+            open_braces = candidate.count('{') - candidate.count('}')
+            open_brackets = candidate.count('[') - candidate.count(']')
+            candidate += '}' * open_braces + ']' * open_brackets
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+
+        raise json.JSONDecodeError("No se pudo parsear el JSON de Gemini", raw, 0)
+
     # ── Llamada a Gemini con retry ──────────────────────────────────────────────
 
-    def _parse_json_response(self, raw_text: str) -> dict:
-        """Parsea JSON robusto desde respuesta de Gemini."""
-        raw_text = raw_text.strip()
-        # Limpiar bloques markdown
-        if raw_text.startswith("```"):
-            parts = raw_text.split("```")
-            raw_text = parts[1] if len(parts) > 1 else raw_text
-            if raw_text.startswith("json"):
-                raw_text = raw_text[4:]
-        return json.loads(raw_text.strip())
-
-    async def _call_gemini_async(self, prompt: str, retries: int = 3) -> dict:
-        """
-        Llama a Gemini de forma asincrona usando executor para no bloquear el event loop.
-        Incluye retry automatico con backoff exponencial para errores 429 / 503.
-        """
+    async def _call_gemini(self, prompt: str, retries: int = 3) -> dict:
+        """Llama a Gemini async con retry exponencial."""
         loop = asyncio.get_event_loop()
 
         for attempt in range(1, retries + 1):
             try:
-                # Ejecutar el SDK sincrono en un thread separado
                 response = await loop.run_in_executor(
                     None,
-                    lambda: self.model.generate_content(prompt)
+                    lambda p=prompt: self.model.generate_content(p)
                 )
-                return self._parse_json_response(response.text)
+                result = self._parse_json(response.text)
+                return result
 
             except json.JSONDecodeError as e:
-                raise Exception(f"Gemini devolvio JSON invalido: {e}")
+                if attempt < retries:
+                    logger.warning(f"[GEMINI] JSON invalido (intento {attempt}), reintentando...")
+                    await asyncio.sleep(2)
+                else:
+                    raise Exception(f"Gemini devolvio JSON invalido tras {retries} intentos: {e}")
+
             except Exception as e:
                 error_str = str(e).lower()
-                is_rate_limit = "429" in error_str or "quota" in error_str or "resource_exhausted" in error_str
-                if is_rate_limit and attempt < retries:
-                    wait_seconds = 2 ** attempt  # 2s, 4s, 8s
-                    logger.warning(
-                        f"[GEMINI] Rate limit (intento {attempt}/{retries}). "
-                        f"Esperando {wait_seconds}s..."
-                    )
-                    await asyncio.sleep(wait_seconds)
+                is_rate = any(x in error_str for x in ["429", "quota", "resource_exhausted", "rate"])
+                if is_rate and attempt < retries:
+                    wait = 5 * attempt  # 5s, 10s, 15s
+                    logger.warning(f"[GEMINI] Rate limit (intento {attempt}). Esperando {wait}s...")
+                    await asyncio.sleep(wait)
                 else:
                     raise
 
-    # ── Chunking Inteligente ────────────────────────────────────────────────────
+    # ── Division inteligente del texto ─────────────────────────────────────────
 
-    def _build_doc_groups(self, documents_text: str) -> List[str]:
+    def _split_into_chunks(self, text: str) -> List[str]:
         """
-        Divide el texto en grupos inteligentes:
-        - Intenta mantener documentos completos juntos en un chunk
-        - Si un documento es mas grande que GEMINI_CHUNK_SIZE, lo divide internamente
+        Divide el texto en chunks de GEMINI_CHUNK_SIZE caracteres,
+        intentando cortar en saltos de parrafo para no partir frases.
         """
-        # Detectar separadores de documentos (los marcamos en processor.py)
-        doc_separator = "=" * 60
-        raw_docs = documents_text.split(doc_separator)
+        chunks = []
+        start = 0
+        total = len(text)
 
-        # Reconstruir fragmentos de documentos con su separador
-        doc_fragments = []
-        for i in range(1, len(raw_docs), 2):  # Cada doc tiene: sep + contenido + sep
-            fragment = doc_separator + raw_docs[i] + (doc_separator if i + 1 < len(raw_docs) else "")
-            doc_fragments.append(fragment)
+        while start < total:
+            end = min(start + GEMINI_CHUNK_SIZE, total)
 
-        # Si no pudimos separar bien (formato diferente), usar chunks de tamaño fijo
-        if not doc_fragments:
-            logger.info("[GEMINI] No se detectaron separadores de documentos. Usando chunks de tamano fijo.")
-            return [
-                documents_text[i: i + GEMINI_CHUNK_SIZE]
-                for i in range(0, len(documents_text), GEMINI_CHUNK_SIZE)
-            ]
+            # Si no llegamos al final, intentar cortar en un parrafo
+            if end < total:
+                # Buscar ultimo "\n\n" dentro del chunk para cortar limpiamente
+                cut = text.rfind('\n\n', start, end)
+                if cut > start + GEMINI_CHUNK_SIZE // 2:
+                    end = cut
 
-        # Agrupar documentos en chunks que no superen GEMINI_CHUNK_SIZE
-        groups = []
-        current_group = ""
-        for fragment in doc_fragments:
-            fragment_size = len(fragment)
-            # Si el fragmento solo ya es mas grande que el chunk → dividirlo
-            if fragment_size > GEMINI_CHUNK_SIZE:
-                if current_group:
-                    groups.append(current_group)
-                    current_group = ""
-                for i in range(0, fragment_size, GEMINI_CHUNK_SIZE):
-                    groups.append(fragment[i: i + GEMINI_CHUNK_SIZE])
-            # Si agrego el fragmento se supera el chunk → cerrar grupo y empezar nuevo
-            elif len(current_group) + fragment_size > GEMINI_CHUNK_SIZE:
-                groups.append(current_group)
-                current_group = fragment
-            else:
-                current_group += "\n" + fragment
+            chunks.append(text[start:end])
+            start = end
 
-        if current_group:
-            groups.append(current_group)
+        return chunks
 
-        logger.info(
-            f"[GEMINI] {len(doc_fragments)} documentos agrupados en {len(groups)} chunks."
+    # ── Sintesis Liviana ────────────────────────────────────────────────────────
+
+    async def _synthesize(self, results: List[dict]) -> dict:
+        """
+        Fusiona N resultados parciales.
+        Envia solo los campos esenciales a Groq para mantener el payload pequeno.
+        """
+        if len(results) == 1:
+            return results[0]
+
+        # Extraer solo los campos clave para reducir el payload a Groq
+        compact_results = []
+        for i, r in enumerate(results):
+            compact = {
+                "fragmento": i + 1,
+                "matrix": [
+                    {
+                        "category_name": item.get("category_name"),
+                        "hallazgo": item.get("hallazgo", "")[:300],  # Max 300 chars por hallazgo
+                        "interpretacion": item.get("interpretacion", "")[:200],
+                        "implicacion_pfi": item.get("implicacion_pfi", "")[:200],
+                        "evidencia": item.get("evidencia", {}),
+                    }
+                    for item in r.get("matrix", [])
+                ],
+                "quality_report": [
+                    {
+                        "pillar_name": item.get("pillar_name"),
+                        "score": item.get("score", 5),
+                        "analysis": item.get("analysis", "")[:300],
+                        "recommendations": item.get("recommendations", [])[:3],
+                    }
+                    for item in r.get("quality_report", [])
+                ]
+            }
+            compact_results.append(compact)
+
+        synthesis_text = json.dumps(compact_results, ensure_ascii=False)
+
+        # Si aun es muy grande, usar merge manual
+        if len(synthesis_text) > 20_000:
+            logger.warning("[SINTESIS] Payload demasiado grande para Groq, usando merge manual.")
+            return self._merge_manual(results)
+
+        prompt = (
+            f"Fusiona estos {len(results)} analisis parciales en un unico JSON:\n\n"
+            f"{synthesis_text}"
         )
-        return groups
 
-    # ── Sintesis con IA (Groq rapido) ─────────────────────────────────────────
+        logger.info(f"[SINTESIS] Enviando {len(synthesis_text):,} chars a Groq para fusionar...")
 
-    async def _synthesize_with_ai(self, chunk_results: List[dict]) -> dict:
-        """
-        Usa Groq (rapido, 128k contexto) para sintetizar multiples analisis
-        parciales en un resultado final cohesivo.
-        """
-        partial_analyses = json.dumps(chunk_results, ensure_ascii=False, indent=2)
-        synthesis_prompt = (
-            f"Tienes {len(chunk_results)} analisis parciales de fragmentos de documentos institucionales. "
-            f"Fusionalos en un unico resultado JSON completo y sin redundancias:\n\n"
-            f"ANALISIS PARCIALES:\n{partial_analyses}"
-        )
-
-        logger.info(f"[GEMINI] Sintetizando {len(chunk_results)} analisis con Groq...")
-
-        # Inyectar temporalmente el system prompt de sintesis en Groq
         loop = asyncio.get_event_loop()
         try:
             completion = await loop.run_in_executor(
@@ -195,140 +233,110 @@ class GeminiService:
                     model=groq_service.model,
                     messages=[
                         {"role": "system", "content": SYNTHESIS_SYSTEM_PROMPT},
-                        {"role": "user", "content": synthesis_prompt},
+                        {"role": "user", "content": prompt},
                     ],
                     temperature=0.05,
                     max_tokens=4096,
                     response_format={"type": "json_object"},
                 )
             )
-            result = json.loads(completion.choices[0].message.content)
-            logger.info("[GROQ SINTESIS OK] Resultado fusionado exitosamente.")
-            return result
+            return json.loads(completion.choices[0].message.content)
         except Exception as e:
-            logger.warning(f"[GROQ SINTESIS] Error en sintesis: {e}. Usando merge manual.")
-            return self._merge_manual(chunk_results)
+            logger.warning(f"[SINTESIS] Groq fallo ({e}). Usando merge manual.")
+            return self._merge_manual(results)
 
     def _merge_manual(self, results: List[dict]) -> dict:
-        """Merge de respaldo (sin IA) si la sintesis Groq falla."""
-        if len(results) == 1:
-            return results[0]
-
+        """Merge de respaldo sin IA."""
         merged_matrix = {}
-        for result in results:
-            for item in result.get("matrix", []):
-                cat = item.get("category_name", "Desconocida")
+        for r in results:
+            for item in r.get("matrix", []):
+                cat = item.get("category_name", "?")
                 if cat not in merged_matrix or len(item.get("hallazgo", "")) > len(merged_matrix[cat].get("hallazgo", "")):
                     merged_matrix[cat] = item
 
         merged_quality = {}
-        for result in results:
-            for item in result.get("quality_report", []):
-                pillar = item.get("pillar_name", "Desconocido")
+        for r in results:
+            for item in r.get("quality_report", []):
+                pillar = item.get("pillar_name", "?")
                 if pillar not in merged_quality:
                     merged_quality[pillar] = {**item, "_scores": [item.get("score", 5)]}
                 else:
                     merged_quality[pillar]["_scores"].append(item.get("score", 5))
-                    existing = set(merged_quality[pillar].get("recommendations", []))
-                    new = set(item.get("recommendations", []))
-                    merged_quality[pillar]["recommendations"] = list(existing | new)
+                    ex = set(merged_quality[pillar].get("recommendations", []))
+                    nw = set(item.get("recommendations", []))
+                    merged_quality[pillar]["recommendations"] = list(ex | nw)[:4]
 
         for p in merged_quality.values():
             scores = p.pop("_scores", [5])
             p["score"] = round(sum(scores) / len(scores))
 
-        return {"matrix": list(merged_matrix.values()), "quality_report": list(merged_quality.values())}
+        return {
+            "matrix": list(merged_matrix.values()),
+            "quality_report": list(merged_quality.values())
+        }
 
     # ── Metodo Principal ────────────────────────────────────────────────────────
 
     async def analyze_documents(self, documents_text: str) -> dict:
         """
-        Analiza documentos con Gemini 2.5 Flash.
-
-        Flujo:
-          1. Si cabe en una sola peticion → peticion directa
-          2. Si no cabe → chunking inteligente por documento + paralelo
-          3. Sintesis final con Groq para fusionar resultados
+        Analiza documentos con chunking robusto y paralelo.
+        Chunks de 70k chars para garantizar respuesta JSON completa.
         """
-        total_size = len(documents_text)
-        logger.info(
-            f"[GEMINI] Texto recibido: {total_size:,} chars "
-            f"(~{total_size // 4:,} tokens est.)"
-        )
+        total = len(documents_text)
+        logger.info(f"[GEMINI] Texto: {total:,} chars (~{total//4:,} tokens)")
 
-        # ── Caso 1: Peticion unica (texto dentro del limite) ───────────────────
-        if total_size <= GEMINI_MAX_CHARS:
-            logger.info("[GEMINI] Modo: PETICION UNICA")
+        # ── Peticion unica ─────────────────────────────────────────────────────
+        if total <= GEMINI_MAX_CHARS:
+            logger.info("[GEMINI] Modo UNICO")
             prompt = (
-                "INICIA AUDITORIA PEDAGOGICA. Analiza los siguientes documentos institucionales "
-                "y genera la matriz de 6 categorias y el reporte de 5 pilares de calidad "
-                "segun el formato indicado.\n\n"
+                "INICIA AUDITORIA PEDAGOGICA. Analiza los documentos y genera "
+                "la matriz de 6 categorias y 5 pilares. "
+                "Responde SOLO con JSON valido, sin texto adicional.\n\n"
                 f"DOCUMENTOS:\n{documents_text}"
             )
-            result = await self._call_gemini_async(prompt)
+            result = await self._call_gemini(prompt)
             if "matrix" not in result or "quality_report" not in result:
-                raise ValueError(f"JSON incompleto de Gemini. Keys: {list(result.keys())}")
-            logger.info(f"[GEMINI OK] {len(result['matrix'])} cats., {len(result['quality_report'])} pilares")
+                raise ValueError("JSON incompleto de Gemini.")
+            logger.info(f"[GEMINI OK] {len(result['matrix'])} cats, {len(result['quality_report'])} pilares")
             return result
 
-        # ── Caso 2: Chunking inteligente + paralelo ────────────────────────────
-        groups = self._build_doc_groups(documents_text)
-        n_groups = len(groups)
-        logger.info(
-            f"[GEMINI] Modo: CHUNKING PARALELO ({n_groups} grupos). "
-            f"Enviando todos a la vez..."
-        )
+        # ── Chunking paralelo ──────────────────────────────────────────────────
+        chunks = self._split_into_chunks(documents_text)
+        n = len(chunks)
+        logger.info(f"[GEMINI] Modo PARALELO: {n} chunks de ~{GEMINI_CHUNK_SIZE:,} chars c/u")
 
-        async def process_chunk(idx: int, chunk: str) -> dict | None:
+        async def process_chunk(idx: int, chunk: str):
             prompt = (
-                f"AUDITORIA PEDAGOGICA — FRAGMENTO {idx+1} DE {n_groups}.\n"
-                "Analiza este fragmento de documentos institucionales segun el formato indicado. "
-                "Si no encuentras evidencia de alguna categoria en este fragmento especifico, "
-                "escribe 'No detectado en este fragmento'.\n\n"
-                f"DOCUMENTOS (FRAGMENTO {idx+1}):\n{chunk}"
+                f"AUDITORIA PEDAGOGICA — PARTE {idx+1} DE {n}.\n"
+                "Analiza este fragmento. Responde SOLO con JSON valido, sin texto adicional.\n"
+                "Si no hay evidencia de una categoria, usa 'No detectado en este fragmento'.\n\n"
+                f"FRAGMENTO {idx+1}:\n{chunk}"
             )
             try:
-                result = await self._call_gemini_async(prompt, retries=3)
-                logger.info(f"[GEMINI] Fragmento {idx+1}/{n_groups} ✓")
-                return result
+                r = await self._call_gemini(prompt, retries=3)
+                if "matrix" not in r or "quality_report" not in r:
+                    logger.warning(f"[GEMINI] Chunk {idx+1} JSON incompleto.")
+                    return None
+                logger.info(f"[GEMINI] Chunk {idx+1}/{n} OK")
+                return r
             except Exception as e:
-                logger.warning(f"[GEMINI] Fragmento {idx+1} fallo: {e}")
+                logger.warning(f"[GEMINI] Chunk {idx+1} fallo: {e}")
                 return None
 
-        # Ejecutar TODOS los chunks en paralelo
-        tasks = [process_chunk(i, chunk) for i, chunk in enumerate(groups)]
-        raw_results = await asyncio.gather(*tasks, return_exceptions=False)
+        raw = await asyncio.gather(*[process_chunk(i, c) for i, c in enumerate(chunks)])
+        good = [r for r in raw if r is not None]
 
-        # Filtrar resultados exitosos
-        chunk_results = [
-            r for r in raw_results
-            if r is not None
-            and isinstance(r, dict)
-            and "matrix" in r
-            and "quality_report" in r
-        ]
-
-        if not chunk_results:
+        if not good:
             raise Exception(
-                "Gemini no pudo procesar ningun fragmento. "
-                "Verifica que los archivos tengan texto legible y no esten protegidos."
+                f"Gemini no pudo procesar ningun fragmento ({n} intentos). "
+                "El archivo puede estar protegido, escaneado sin OCR, o ser demasiado grande."
             )
 
+        logger.info(f"[GEMINI] {len(good)}/{n} fragmentos OK. Sintetizando...")
+        final = await self._synthesize(good)
         logger.info(
-            f"[GEMINI] {len(chunk_results)}/{n_groups} fragmentos exitosos. "
-            f"Iniciando sintesis..."
-        )
-
-        # Sintesis final con IA (Groq) o merge manual de respaldo
-        if len(chunk_results) == 1:
-            final = chunk_results[0]
-        else:
-            final = await self._synthesize_with_ai(chunk_results)
-
-        logger.info(
-            f"[GEMINI OK - PARALELO] Sintesis completa: "
-            f"{len(final.get('matrix', []))} categorias, "
-            f"{len(final.get('quality_report', []))} pilares."
+            f"[GEMINI OK TOTAL] {len(final.get('matrix',[]))} cats, "
+            f"{len(final.get('quality_report',[]))} pilares"
         )
         return final
 
