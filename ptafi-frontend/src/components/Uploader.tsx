@@ -11,9 +11,11 @@ import {
     BrainCircuit,
     Loader2,
     ChevronRight,
-    Play
+    Play,
+    FolderSync
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
 
 interface FileSlotProps {
     id: string;
@@ -89,9 +91,10 @@ const FileSlot = ({ id, label, file, onUpload, onRemove }: FileSlotProps) => {
 };
 
 interface UploaderProps {
-    onAnalysisStart: (data: FormData) => void;
+    onAnalysisStart: (data: FormData, useLocalFolder?: boolean) => void;
     isAnalyzing: boolean;
 }
+
 
 const MANDATORY_FILES = [
     { id: 'PEI', label: 'PEI (Proyecto Educativo)' },
@@ -165,7 +168,17 @@ export const Uploader = ({ onAnalysisStart, isAnalyzing }: UploaderProps) => {
             if (file) formData.append("files", file);
         });
 
-        onAnalysisStart(formData);
+        onAnalysisStart(formData, false);
+    };
+
+    const handleSubmitLocal = () => {
+        if (!institutionName || !tutorName) return;
+
+        const formData = new FormData();
+        formData.append("institution_name", institutionName);
+        formData.append("tutor_name", tutorName);
+
+        onAnalysisStart(formData, true);
     };
 
     return (
@@ -278,6 +291,22 @@ export const Uploader = ({ onAnalysisStart, isAnalyzing }: UploaderProps) => {
                             <ChevronRight className="w-5 h-5" />
                         </div>
                     )}
+                </button>
+
+                <button
+                    disabled={(!institutionName || !tutorName) || isAnalyzing}
+                    onClick={handleSubmitLocal}
+                    className={cn(
+                        "relative px-10 py-4 rounded-3xl font-bold text-xs uppercase tracking-widest transition-all duration-300 w-full max-w-sm",
+                        (institutionName && tutorName) && !isAnalyzing
+                            ? "bg-white/5 border border-white/10 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/30 shadow-lg shadow-emerald-500/5 hover:-translate-y-1"
+                            : "bg-white/5 border border-white/5 text-gray-600 cursor-not-allowed hidden"
+                    )}
+                >
+                    <div className="flex items-center justify-center gap-3">
+                        <FolderSync className="w-4 h-4" />
+                        TEST: Escanear carpeta '7 archivos'
+                    </div>
                 </button>
 
                 {!isReady && !isAnalyzing && (

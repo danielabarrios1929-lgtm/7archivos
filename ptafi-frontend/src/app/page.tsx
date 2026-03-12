@@ -8,6 +8,7 @@ import { Sparkles, Database, FileSearch, ShieldCheck, AlertCircle, BrainCircuit,
 
 const API_URL = "/api/v1/analysis/process";
 
+
 const PROCESSING_PHASES = [
   { icon: FileSearch, text: "Extrayendo texto de los documentos...", detail: "Procesando PDFs, Word y Excel" },
   { icon: Layers, text: "Dividiendo en fragmentos inteligentes...", detail: "Partiendo en partes manejables para la IA" },
@@ -117,11 +118,12 @@ export default function Home() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const startAnalysis = async (formData: FormData) => {
+  const startAnalysis = async (formData: FormData, useLocalFolder: boolean = false) => {
     setIsAnalyzing(true);
     setError(null);
     try {
-      const response = await fetch(API_URL, { method: 'POST', body: formData });
+      const endpoint = useLocalFolder ? "/api/v1/analysis/process-local-folder" : API_URL;
+      const response = await fetch(endpoint, { method: 'POST', body: formData });
       if (!response.ok) {
         let msg = "Fallo crítico en el motor de auditoría.";
         try {

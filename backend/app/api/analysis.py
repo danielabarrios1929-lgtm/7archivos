@@ -1,10 +1,11 @@
 ﻿from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-from typing import List, Dict
+from typing import List, Dict, Optional
 from app.services.processor import processor
 from app.services.ai_orchestrator import ai_orchestrator   # ← Orquestador Híbrido
 from app.services.reporter import pdf_reporter
 import logging
 import base64
+import os
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -84,3 +85,92 @@ async def process_analysis(
     except Exception as e:
         logger.error(f"[API] Error crítico en Motor IA: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Fallo en Auditoría IA: {str(e)}")
+
+@router.post("/process-local-folder", response_model=AnalysisResponse)
+async def process_local_folder(
+    institution_name: str = Form(...),
+    tutor_name: str = Form(...)
+):
+    """
+    Endpoint especial para pruebas (Desarrollo).
+    Carga automáticamente todos los archivos desde la carpeta local '7 archivos'
+    sin necesidad de subirlos mediante el formulario.
+    """
+    logger.info(f"[API] Iniciando auditoría desde carpeta local: {institution_name}")
+
+    # Calcular la ruta a la carpeta '7 archivos' (3 niveles arriba del archivo actual, o desde el directorio raíz)
+    # asumiendo ejecutado desde /backend
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+    folder_path = os.path.join(base_dir, "7 archivos")
+
+    if not os.path.exists(folder_path):
+        raise HTTPException(status_code=404, detail=f"No se encontró la carpeta: {folder_path}. Asegúrate de crearla en la raíz del proyecto al lado del backend.")
+
+    documents: Dict[str, bytes] = {}
+    valid_extensions = {
+        '.pdf', '.docx', '.doc', '.txt', '.md',
+        '.xlsx', '.xls', '.csv',
+        '.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff', '.gif',
+        '.pptx', '.ppt',
+    }
+
+    try:
+        for filename in os.listdir(folder_path):
+            ext = os.path.splitext(filename)[1].lower()
+            if ext in valid_extensions:
+                file_path = os.path.join(folder_path, filename)
+                if os.path.isfile(file_path):
+                    with open(file_path, 'rb') as f:
+                        documents[filename] = f.read()
+                        logger.info(f"[API] Archivo auto-cargado: {filename} ({len(documents[filename]):,} bytes)")
+    except Exception as e:
+        logger.error(f"[API] Error leyendo carpeta local: {e}")
+        raise HTTPException(status_code=500, detail=f"Error leyendo archivos locales: {e}")
+
+    if not documents:
+        raise HTTPException(status_code=400, detail="La carpeta '7 archivos' está vacía o no tiene formatos válidos.")
+
+    missing = processor.validate_integrity(documents)
+    context = processor.prepare_context_for_ai(documents)
+    logger.info(f"[API] Contexto local preparado: {len(context):,} chars totales")
+
+    is_demo = "demo" in institution_name.lower()
+
+    try:
+        raw_analysis = await ai_orchestrator.analyze(context, force_groq=is_demo)
+
+        engine_used = raw_analysis.pop("_engine_used", "desconocido")
+        engine_reason = raw_analysis.pop("_engine_reason", "")
+        engine_warning = raw_analysis.pop("_warning", None)
+
+        response_data = {
+            "institution_info": {
+                "name": institution_name,
+                "tutor": tutor_name
+            },
+            "matrix": raw_analysis.get("matrix", []),
+            "quality_report": raw_analysis.get("quality_report", []),
+            "integrity_check": {
+                "missing": missing,
+                "status": "partial" if missing else "complete"
+            },
+            "ai_engine": {
+                "used": engine_used,
+                "reason": engine_reason,
+                "warning": engine_warning
+            },
+            "status": "success"
+        }
+
+        try:
+            pdf_bytes = pdf_reporter.generate_pdf(response_data)
+            response_data["pdf_base64"] = base64.b64encode(pdf_bytes).decode('utf-8')
+        except Exception as pdf_err:
+            logger.error(f"[API] Error generando PDF: {str(pdf_err)}")
+            response_data["pdf_base64"] = None
+
+        return response_data
+
+    except Exception as e:
+        logger.error(f"[API] Error crítico en Motor IA: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Fallo en Auditoría IA desde carpeta: {str(e)}")
