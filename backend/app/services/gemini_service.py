@@ -213,36 +213,21 @@ class GeminiService:
 
         synthesis_text = json.dumps(compact_results, ensure_ascii=False)
 
-        # Si aun es muy grande, usar merge manual
-        if len(synthesis_text) > 20_000:
-            logger.warning("[SINTESIS] Payload demasiado grande para Groq, usando merge manual.")
-            return self._merge_manual(results)
-
         prompt = (
-            f"Fusiona estos {len(results)} analisis parciales en un unico JSON:\n\n"
+            f"Fusiona estos {len(results)} analisis parciales en un unico JSON cohesivo.\n\n"
             f"{synthesis_text}"
         )
 
-        logger.info(f"[SINTESIS] Enviando {len(synthesis_text):,} chars a Groq para fusionar...")
+        logger.info(f"[SINTESIS] Enviando {len(synthesis_text):,} chars a Gemini para fusionar masivamente...")
 
-        loop = asyncio.get_event_loop()
         try:
-            completion = await loop.run_in_executor(
-                None,
-                lambda: groq_service.client.chat.completions.create(
-                    model=groq_service.model,
-                    messages=[
-                        {"role": "system", "content": SYNTHESIS_SYSTEM_PROMPT},
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.05,
-                    max_tokens=4096,
-                    response_format={"type": "json_object"},
-                )
-            )
-            return json.loads(completion.choices[0].message.content)
+            full_prompt = SYNTHESIS_SYSTEM_PROMPT + "\n\n" + prompt
+            # Usar Gemini para la síntesis debido a su enorme ventana de 1M tokens.
+            # Groq falla aquí si el payload excede sus TPM gratuitos.
+            final_result = await self._call_gemini(full_prompt, retries=3)
+            return final_result
         except Exception as e:
-            logger.warning(f"[SINTESIS] Groq fallo ({e}). Usando merge manual.")
+            logger.warning(f"[SINTESIS] Gemini falló sintetizando ({e}). Usando merge manual de rescate.")
             return self._merge_manual(results)
 
     def _merge_manual(self, results: List[dict]) -> dict:
