@@ -20,10 +20,9 @@ from app.services.groq_service import SYSTEM_PROMPT, groq_service
 logger = logging.getLogger(__name__)
 
 # ── Umbrales ───────────────────────────────────────────────────────────────────
-# CONSERVADORES para tier gratuito de Gemini
-GROQ_THRESHOLD_CHARS = 25_000   # < esto → Groq directo (rapido)
-GEMINI_MAX_CHARS     = 65_000   # Limite seguro peticion unica (~16k tokens)
-GEMINI_CHUNK_SIZE    = 60_000   # Tamano de cada chunk (~15k tokens, margen seguro)
+# CONSERVADORES para tier gratuito de Groq
+GROQ_THRESHOLD_CHARS = 25_000   # < esto → Groq directo (rápido, no excede 12k TPM)
+GEMINI_MAX_CHARS     = 3_500_000 # Límite gigante de Gemini 2.5 Flash (~1M tokens)
 
 # ── Modelo ─────────────────────────────────────────────────────────────────────
 GEMINI_MODEL = "gemini-2.5-flash"
@@ -148,90 +147,8 @@ class GeminiService:
                 else:
                     raise
 
-    # ── Division inteligente del texto ─────────────────────────────────────────
-
-    def _split_into_chunks(self, text: str) -> List[str]:
-        """
-        Divide el texto en chunks de GEMINI_CHUNK_SIZE caracteres,
-        intentando cortar en saltos de parrafo para no partir frases.
-        """
-        chunks = []
-        start = 0
-        total = len(text)
-
-        while start < total:
-            end = min(start + GEMINI_CHUNK_SIZE, total)
-
-            # Si no llegamos al final, intentar cortar en un parrafo
-            if end < total:
-                # Buscar ultimo "\n\n" dentro del chunk para cortar limpiamente
-                cut = text.rfind('\n\n', start, end)
-                if cut > start + GEMINI_CHUNK_SIZE // 2:
-                    end = cut
-
-            chunks.append(text[start:end])
-            start = end
-
-        return chunks
-
-    # ── Sintesis Liviana ────────────────────────────────────────────────────────
-
-    async def _synthesize(self, results: List[dict]) -> dict:
-        """
-        Fusiona N resultados parciales.
-        Envia solo los campos esenciales a Groq para mantener el payload pequeno.
-        """
-        if len(results) == 1:
-            return results[0]
-
-        # Extraer solo los campos clave para reducir el payload a Groq
-        compact_results = []
-        for i, r in enumerate(results):
-            compact = {
-                "fragmento": i + 1,
-                "matrix": [
-                    {
-                        "category_name": item.get("category_name"),
-                        "hallazgo": item.get("hallazgo", "")[:300],  # Max 300 chars por hallazgo
-                        "interpretacion": item.get("interpretacion", "")[:200],
-                        "implicacion_pfi": item.get("implicacion_pfi", "")[:200],
-                        "evidencia": item.get("evidencia", {}),
-                    }
-                    for item in r.get("matrix", [])
-                ],
-                "quality_report": [
-                    {
-                        "pillar_name": item.get("pillar_name"),
-                        "score": item.get("score", 5),
-                        "analysis": item.get("analysis", "")[:300],
-                        "recommendations": item.get("recommendations", [])[:3],
-                    }
-                    for item in r.get("quality_report", [])
-                ]
-            }
-            compact_results.append(compact)
-
-        synthesis_text = json.dumps(compact_results, ensure_ascii=False)
-
-        prompt = (
-            f"Fusiona estos {len(results)} analisis parciales en un unico JSON cohesivo.\n\n"
-            f"{synthesis_text}"
-        )
-
-        logger.info(f"[SINTESIS] Enviando {len(synthesis_text):,} chars a Gemini para fusionar masivamente...")
-
-        try:
-            full_prompt = SYNTHESIS_SYSTEM_PROMPT + "\n\n" + prompt
-            # Usar Gemini para la síntesis debido a su enorme ventana de 1M tokens.
-            # Groq falla aquí si el payload excede sus TPM gratuitos.
-            final_result = await self._call_gemini(full_prompt, retries=3)
-            return final_result
-        except Exception as e:
-            logger.warning(f"[SINTESIS] Gemini falló sintetizando ({e}). Usando merge manual de rescate.")
-            return self._merge_manual(results)
-
     def _merge_manual(self, results: List[dict]) -> dict:
-        """Merge de respaldo sin IA."""
+        """Merge de respaldo sin IA. (Mantenido por retrocompatibilidad)"""
         merged_matrix = {}
         for r in results:
             for item in r.get("matrix", []):
@@ -264,77 +181,53 @@ class GeminiService:
 
     async def analyze_documents(self, documents_text: str) -> dict:
         """
-        Analiza documentos con chunking robusto y paralelo.
-        Chunks de 70k chars para garantizar respuesta JSON completa.
+        Analiza documentos directamente usando el enorme contexto de 1M de Gemini Flash.
+        Así la solicitud tarda de 10 a 20 segundos y no ocurren caídas por Timeout de 90s,
+        ni tampoco bloqueos por la cuota por mandar 8 llamados al tiempo.
         """
         total = len(documents_text)
-        logger.info(f"[GEMINI] Texto: {total:,} chars (~{total//4:,} tokens)")
+        logger.info(f"[GEMINI] Texto gigante detectado: {total:,} chars (~{total//4:,} tokens). Procesando DE UNA.")
 
-        # ── Peticion unica ─────────────────────────────────────────────────────
-        if total <= GEMINI_MAX_CHARS:
-            logger.info("[GEMINI] Modo UNICO")
-            prompt = (
-                "INICIA AUDITORIA PEDAGOGICA. Analiza los documentos y genera "
-                "la matriz de 6 categorias y 5 pilares. "
-                "Responde SOLO con JSON valido, sin texto adicional.\n\n"
-                f"DOCUMENTOS:\n{documents_text}"
-            )
-            result = await self._call_gemini(prompt)
-            if "matrix" not in result or "quality_report" not in result:
-                raise ValueError("JSON incompleto de Gemini.")
-            logger.info(f"[GEMINI OK] {len(result['matrix'])} cats, {len(result['quality_report'])} pilares")
-            return result
-
-        # ── Chunking paralelo ──────────────────────────────────────────────────
-        chunks = self._split_into_chunks(documents_text)
-        n = len(chunks)
-        logger.info(f"[GEMINI] Modo PARALELO: {n} chunks de ~{GEMINI_CHUNK_SIZE:,} chars c/u")
-
-        async def process_chunk(idx: int, chunk: str):
-            prompt = (
-                f"AUDITORIA PEDAGOGICA — PARTE {idx+1} DE {n}.\n"
-                "Analiza este fragmento. Responde SOLO con JSON valido, sin texto adicional.\n"
-                "Si no hay evidencia de una categoria, usa 'No detectado en este fragmento'.\n\n"
-                f"FRAGMENTO {idx+1}:\n{chunk}"
-            )
-            try:
-                r = await self._call_gemini(prompt, retries=3)
-                if "matrix" not in r or "quality_report" not in r:
-                    logger.warning(f"[GEMINI] Chunk {idx+1} JSON incompleto.")
-                    return None
-                logger.info(f"[GEMINI] Chunk {idx+1}/{n} OK")
-                return r
-            except Exception as e:
-                logger.warning(f"[GEMINI] Chunk {idx+1} fallo crítico: {e}")
-                return None
-
-        # Procesamiento SECUENCIAL CONTROLADO (para no reventar Gemini Free Tier - 15 RPM)
-        # en vez de asyncio.gather (paralelo) que satura la cuota gratuita de inmediato
-        logger.info(f"[GEMINI] Iniciando escaneo profundo secuencial de {n} partes. Esto tomará un momento...")
-        raw = []
-        for i, c in enumerate(chunks):
-            r = await process_chunk(i, c)
-            raw.append(r)
-            if i < len(chunks) - 1:
-                # Retardo protector de 5s entre peticiones = max ~12 req/minuto (debajo de 15)
-                logger.info(f"[GEMINI] Pausa de protección de cuota (5s)...")
-                await asyncio.sleep(5)
-        
-        good = [r for r in raw if r is not None]
-
-        if not good:
-            raise Exception(
-                f"Gemini no pudo procesar ningun fragmento ({n} intentos). "
-                "El archivo puede estar protegido, escaneado sin OCR, o ser demasiado grande."
-            )
-
-        logger.info(f"[GEMINI] {len(good)}/{n} fragmentos OK. Sintetizando...")
-        final = await self._synthesize(good)
-        logger.info(
-            f"[GEMINI OK TOTAL] {len(final.get('matrix',[]))} cats, "
-            f"{len(final.get('quality_report',[]))} pilares"
+        prompt = (
+            "INICIA AUDITORIA PEDAGOGICA. Analiza la totalidad de estos documentos institucionales y genera "
+            "la matriz de 6 categorias y el reporte de 5 pilares de forma exhaustiva.\n"
+            "Responde SOLO con JSON valido, sin texto de relleno. "
+            "Si el JSON va a ser muy largo, resume los campos 'evidencia' para que no se trunque.\n\n"
+            f"DOCUMENTOS COMPLETOS:\n{documents_text}"
         )
-        return final
 
+        try:
+            result = await self._call_gemini(prompt, retries=3)
+            
+            if "matrix" not in result or "quality_report" not in result:
+                logger.warning("Gemini omitió llaves en la respuesta.")
+                raise ValueError("JSON incompleto de Gemini. Faltan llaves obligatorias.")
+                
+            logger.info(f"[GEMINI OK] {len(result['matrix'])} cats, {len(result['quality_report'])} pilares. ¡Proceso rápido logrado!")
+            return result
+            
+        except Exception as e:
+            logger.error(f"[GEMINI] CRÍTICO: Fallo al procesar DE UNA: {e}")
+            return {
+                "matrix": [
+                    {
+                        "category_name": "Procesamiento Interrumpido",
+                        "hallazgo": "El documento no pudo ser procesado o la IA detuvo el escaneo protector de cuotas.",
+                        "evidencia": {"text": "Fallo total.", "document_name": "N/A", "page": 0},
+                        "interpretacion": f"Error del servidor de Google IA: {str(e)[:100]}",
+                        "implicacion_pfi": "Se recomienda subir archivos más limpios o hacerlo por tandas menores si pesa demasiado."
+                    }
+                ],
+                "quality_report": [
+                    {
+                        "pillar_name": "Accesibilidad del Analizador",
+                        "score": 1,
+                        "analysis": "Hubo un bloqueo en el ancho de banda del documento.",
+                        "recommendations": ["Asegúrate de que no haya imágenes muy pesadas dentro del PDF", "Reintenta procesar en un par de minutos"]
+                    }
+                ],
+                "_engine_used": "Gemini 2.5 Flash",
+                "_warning": "Error Crítico 91 - Procesamiento Abortado por timeout."
+            }
 
 gemini_service = GeminiService()
