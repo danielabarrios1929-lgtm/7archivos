@@ -110,7 +110,7 @@ class GroqService:
         Limite: 128k tokens. Usamos los primeros 80k chars (~20k tokens) de forma segura.
         Para textos muy grandes, el orquestador deberia usar Gemini con chunking.
         """
-        GROQ_CHAR_LIMIT = 80_000
+        GROQ_CHAR_LIMIT = 30_000
 
         if len(documents_text) > GROQ_CHAR_LIMIT:
             logger.warning(

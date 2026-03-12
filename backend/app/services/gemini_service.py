@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 
 # ── Umbrales ───────────────────────────────────────────────────────────────────
 # CONSERVADORES para tier gratuito de Gemini
-GROQ_THRESHOLD_CHARS = 40_000   # < esto → Groq directo (rapido)
-GEMINI_MAX_CHARS     = 80_000   # Limite seguro peticion unica (~20k tokens)
-GEMINI_CHUNK_SIZE    = 70_000   # Tamano de cada chunk (~17k tokens, margen seguro)
+GROQ_THRESHOLD_CHARS = 25_000   # < esto → Groq directo (rapido)
+GEMINI_MAX_CHARS     = 65_000   # Limite seguro peticion unica (~16k tokens)
+GEMINI_CHUNK_SIZE    = 60_000   # Tamano de cada chunk (~15k tokens, margen seguro)
 
 # ── Modelo ─────────────────────────────────────────────────────────────────────
 GEMINI_MODEL = "gemini-2.5-flash"
@@ -140,10 +140,10 @@ class GeminiService:
 
             except Exception as e:
                 error_str = str(e).lower()
-                is_rate = any(x in error_str for x in ["429", "quota", "resource_exhausted", "rate"])
-                if is_rate and attempt < retries:
-                    wait = 5 * attempt  # 5s, 10s, 15s
-                    logger.warning(f"[GEMINI] Rate limit (intento {attempt}). Esperando {wait}s...")
+                is_rate_limit = any(x in error_str for x in ["429", "quota", "resource_exhausted", "rate"])
+                if is_rate_limit and attempt < retries:
+                    wait = 15 * attempt  # 15s, 30s, 45s (Rate limit de Gemini requiere mucho tiempo)
+                    logger.warning(f"[GEMINI] Rate limit detectado (intento {attempt}). Esperando {wait}s...")
                     await asyncio.sleep(wait)
                 else:
                     raise
@@ -320,10 +320,21 @@ class GeminiService:
                 logger.info(f"[GEMINI] Chunk {idx+1}/{n} OK")
                 return r
             except Exception as e:
-                logger.warning(f"[GEMINI] Chunk {idx+1} fallo: {e}")
+                logger.warning(f"[GEMINI] Chunk {idx+1} fallo crítico: {e}")
                 return None
 
-        raw = await asyncio.gather(*[process_chunk(i, c) for i, c in enumerate(chunks)])
+        # Procesamiento SECUENCIAL CONTROLADO (para no reventar Gemini Free Tier - 15 RPM)
+        # en vez de asyncio.gather (paralelo) que satura la cuota gratuita de inmediato
+        logger.info(f"[GEMINI] Iniciando escaneo profundo secuencial de {n} partes. Esto tomará un momento...")
+        raw = []
+        for i, c in enumerate(chunks):
+            r = await process_chunk(i, c)
+            raw.append(r)
+            if i < len(chunks) - 1:
+                # Retardo protector de 5s entre peticiones = max ~12 req/minuto (debajo de 15)
+                logger.info(f"[GEMINI] Pausa de protección de cuota (5s)...")
+                await asyncio.sleep(5)
+        
         good = [r for r in raw if r is not None]
 
         if not good:
