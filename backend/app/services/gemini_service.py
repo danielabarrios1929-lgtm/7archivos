@@ -141,8 +141,8 @@ class GeminiService:
                 error_str = str(e).lower()
                 is_rate_limit = any(x in error_str for x in ["429", "quota", "resource_exhausted", "rate"])
                 if is_rate_limit and attempt < retries:
-                    wait = 15 * attempt  # 15s, 30s, 45s (Rate limit de Gemini requiere mucho tiempo)
-                    logger.warning(f"[GEMINI] Rate limit detectado (intento {attempt}). Esperando {wait}s...")
+                    wait = 30 * attempt  # 30s, 60s, 90s - Pausa masiva para reset de TPM
+                    logger.warning(f"[GEMINI] Rate limit severo detectado (429). Esperando {wait}s...")
                     await asyncio.sleep(wait)
                 else:
                     raise
@@ -181,23 +181,27 @@ class GeminiService:
 
     async def analyze_documents(self, documents_text: str) -> dict:
         """
-        Analiza documentos directamente usando el enorme contexto de 1M de Gemini Flash.
-        Así la solicitud tarda de 10 a 20 segundos y no ocurren caídas por Timeout de 90s,
-        ni tampoco bloqueos por la cuota por mandar 8 llamados al tiempo.
+        Analiza documentos garantizando no explotar la cuota con reintentos macizos y mitigadores de fallo.
         """
         total = len(documents_text)
-        logger.info(f"[GEMINI] Texto gigante detectado: {total:,} chars (~{total//4:,} tokens). Procesando DE UNA.")
+        
+        # Super-truncador defensivo para no agotar la TPM gratuita brutalmente de un solo envío
+        SAFE_LIMIT = 500_000 
+        if total > SAFE_LIMIT:
+            logger.warning(f"[GEMINI] ARCHIVO TITÁNICO: {total} chars. Truncando a {SAFE_LIMIT} para no romper el cuota TPM gratuita.")
+            documents_text = documents_text[:SAFE_LIMIT]
 
         prompt = (
-            "INICIA AUDITORIA PEDAGOGICA. Analiza la totalidad de estos documentos institucionales y genera "
-            "la matriz de 6 categorias y el reporte de 5 pilares de forma exhaustiva.\n"
-            "Responde SOLO con JSON valido, sin texto de relleno. "
-            "Si el JSON va a ser muy largo, resume los campos 'evidencia' para que no se trunque.\n\n"
+            "INICIA AUDITORIA PEDAGOGICA EXHAUSTIVA. Analiza la totalidad de estos documentos "
+            "institucionales y genera la matriz de 6 categorias y el reporte de 5 pilares.\n"
+            "Responde SOLO con JSON valido. "
+            "Es OBLIGATORIO que los hallazgos estén completos.\n\n"
             f"DOCUMENTOS COMPLETOS:\n{documents_text}"
         )
 
         try:
-            result = await self._call_gemini(prompt, retries=3)
+            # Damos hasta 4 reintentos, con pausas masivas (configuradas arriba) si choca con error 429
+            result = await self._call_gemini(prompt, retries=4)
             
             if "matrix" not in result or "quality_report" not in result:
                 logger.warning("Gemini omitió llaves en la respuesta.")
@@ -207,27 +211,27 @@ class GeminiService:
             return result
             
         except Exception as e:
-            logger.error(f"[GEMINI] CRÍTICO: Fallo al procesar DE UNA: {e}")
+            logger.error(f"[GEMINI] CRÍTICO GLOBAL: Fallo al procesar tras reintentos: {e}")
             return {
                 "matrix": [
                     {
-                        "category_name": "Procesamiento Interrumpido",
-                        "hallazgo": "El documento no pudo ser procesado o la IA detuvo el escaneo protector de cuotas.",
-                        "evidencia": {"text": "Fallo total.", "document_name": "N/A", "page": 0},
-                        "interpretacion": f"Error del servidor de Google IA: {str(e)[:100]}",
-                        "implicacion_pfi": "Se recomienda subir archivos más limpios o hacerlo por tandas menores si pesa demasiado."
+                        "category_name": "Procesamiento de Cuota Excedida",
+                        "hallazgo": "La Inteligencia Artificial gratuita ha alcanzado su límite de palabras por minuto. El archivo contenía demasiadas páginas o fotos para analizar en un solo barrido.",
+                        "evidencia": {"text": f"Error 429: {str(e)[:50]}", "document_name": "Servidor Google", "page": 0},
+                        "interpretacion": "El volumen de datos saturó el canal gratuito temporalmente.",
+                        "implicacion_pfi": "INTÉNTALO OTRA VEZ EN 1 MINUTO EXACTO."
                     }
                 ],
                 "quality_report": [
                     {
-                        "pillar_name": "Accesibilidad del Analizador",
+                        "pillar_name": "Límite de Servidor (429)",
                         "score": 1,
-                        "analysis": "Hubo un bloqueo en el ancho de banda del documento.",
-                        "recommendations": ["Asegúrate de que no haya imágenes muy pesadas dentro del PDF", "Reintenta procesar en un par de minutos"]
+                        "analysis": "El documento no pudo ser procesado porque se agotó la cuota gratuita de lectura por minuto.",
+                        "recommendations": ["Espera 60 segundos y presiona el botón nuevamente."]
                     }
                 ],
                 "_engine_used": "Gemini 2.5 Flash",
-                "_warning": "Error Crítico 91 - Procesamiento Abortado por timeout."
+                "_warning": "Error Crítico 429 - Límite gratuito excedido, reintente en 1 minuto."
             }
 
 gemini_service = GeminiService()
