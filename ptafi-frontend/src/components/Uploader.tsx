@@ -11,7 +11,6 @@ import {
     BrainCircuit,
     Loader2,
     ChevronRight,
-    Play,
     FolderSync
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -123,36 +122,7 @@ export const Uploader = ({ onAnalysisStart, isAnalyzing }: UploaderProps) => {
 
     const [institutionName, setInstitutionName] = useState("");
     const [tutorName, setTutorName] = useState("");
-    const [isDemoLoading, setIsDemoLoading] = useState(false);
-
-    // Función para activar el Modo Demo (Con contenido REAL de Guaimaral)
-    const activateDemoMode = async () => {
-        setIsDemoLoading(true);
-        setInstitutionName("I.E. Guaimaral (Modo Demo Real)");
-        setTutorName("Auditor Especialista PTAFI");
-
-        const demoFiles: Record<string, File> = {};
-
-        // Mapeo de contenidos reales que ya tenemos en test_pdfs
-        const demoDocs = [
-            { id: 'PEI', name: 'PEI_REAL.txt', content: "PROYECTO EDUCATIVO INSTITUCIONAL (PEI) - I.E. GUAIMARAL\n\nModelo Pedagógico: Constructivismo Social con enfoque territorial.\nIdentidad: Formación integral de jóvenes rurales en Tubará, Atlántico.\nEjes Transversales: Agroecología, Tecnología, Emprendimiento Local y Valores Ciudadanos." },
-            { id: 'MC', name: 'MANUAL_CONVIVENCIA_REAL.txt', content: "MANUAL DE CONVIVENCIA - I.E. GUAIMARAL\n\nPrincipios: Respeto por la diversidad cultural (indígena y afro), solidaridad y diálogo.\nResolución de Conflictos: Se prioriza la mediación escolar." },
-            { id: 'PMI', name: 'PMI_REAL.txt', content: "PLAN DE MEJORAMIENTO INSTITUCIONAL (PMI) - I.E. GUAIMARAL\n\nObjetivo: Mejorar los resultados en matemáticas y lectura. Meta: Implementar estrategias de nivelación para el tercer periodo." },
-            { id: 'POA', name: 'POA_REAL.txt', content: "PLAN OPERATIVO ANUAL (POA) - 2026\n\nMetas: 1. Implementación al 100% de los CI de robótica y agroecología. 2. Capacitación docente en PTAFI 3.0." },
-            { id: 'SIEE', name: 'SIEE_REAL.txt', content: "SISTEMA INSTITUCIONAL DE EVALUACIÓN DE ESTUDIANTES (SIEE) - I.E. GUAIMARAL\n\nCriterios: Evaluaciones Sumativas 60%, Formativas 40%. Se detecta evaluación tradicional." },
-            { id: 'LC', name: 'LECTURA_DE_CONTEXTO_REAL.txt', content: "INFORME DE DIAGNÓSTICO PARTICIPATIVO - I.E. GUAIMARAL\nUbicación: Tubará, Atlántico. Predomina actividad agrícola familiar y comercio informal." },
-            { id: 'PFI', name: 'PFI_GUAIMARAL.txt', content: "PLAN DE FORMACIÓN INTEGRAL (PFI) 2026 - I.E. GUAIMARAL\nCI: Agro-Tec, Guardianes de la Memoria, Matemáticas en la Tierra." }
-        ];
-
-        demoDocs.forEach(doc => {
-            const blob = new Blob([doc.content], { type: 'text/plain' });
-            const file = new File([blob], doc.name, { type: 'text/plain' });
-            demoFiles[doc.id] = file;
-        });
-
-        setFiles(prev => ({ ...prev, ...demoFiles }));
-        setIsDemoLoading(false);
-    };
+    const [tutorName, setTutorName] = useState("");
 
     const hasFiles = Object.values(files).some(f => f !== null);
     const isReady = institutionName && tutorName && hasFiles;
@@ -240,14 +210,6 @@ export const Uploader = ({ onAnalysisStart, isAnalyzing }: UploaderProps) => {
                 >
                     <div className="flex items-center justify-between px-2">
                         <h3 className="text-lg font-bold text-gray-200 uppercase tracking-tighter">Documentos de Auditoría</h3>
-                        <button
-                            onClick={activateDemoMode}
-                            disabled={isDemoLoading || isAnalyzing}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-full text-[10px] font-black uppercase tracking-widest text-blue-400 transition-all font-bold shadow-lg shadow-blue-500/10"
-                        >
-                            {isDemoLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
-                            MODO DEMO GUAIMARAL (REAL)
-                        </button>
                     </div>
 
                     <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
@@ -270,44 +232,39 @@ export const Uploader = ({ onAnalysisStart, isAnalyzing }: UploaderProps) => {
                 animate={{ opacity: 1, y: 0 }}
                 className="flex flex-col items-center gap-4 pt-8"
             >
-                <button
-                    disabled={!isReady || isAnalyzing}
-                    onClick={handleSubmit}
-                    className={cn(
-                        "relative px-12 py-5 rounded-3xl font-black text-lg uppercase tracking-[0.2em] transition-all duration-500",
-                        isReady && !isAnalyzing
-                            ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-2xl shadow-blue-500/40 hover:scale-105 active:scale-95"
-                            : "bg-white/5 text-gray-600 cursor-not-allowed opacity-50"
-                    )}
-                >
-                    {isAnalyzing ? (
-                        <div className="flex items-center gap-3">
-                            <Loader2 className="w-5 h-5 animate-spin" />
-                            Ejecutando Auditoría...
+                <div className="flex flex-col md:flex-row gap-4 w-full justify-center items-center">
+                    <button
+                        disabled={!isReady || isAnalyzing}
+                        onClick={handleSubmit}
+                        className={cn(
+                            "relative px-8 py-4 rounded-3xl font-black text-[11px] uppercase tracking-widest transition-all duration-300 w-full max-w-sm",
+                            isReady && !isAnalyzing
+                                ? "bg-white/5 border border-white/10 text-white hover:bg-white/10 shadow-lg hover:-translate-y-1"
+                                : "bg-white/5 text-gray-600 cursor-not-allowed border border-white/5"
+                        )}
+                    >
+                        <div className="flex items-center justify-center gap-2">
+                            {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                            Procesar Archivos Manuales
                         </div>
-                    ) : (
-                        <div className="flex items-center gap-3">
-                            Iniciar Gran Auditoría
-                            <ChevronRight className="w-5 h-5" />
-                        </div>
-                    )}
-                </button>
+                    </button>
 
-                <button
-                    disabled={(!institutionName || !tutorName) || isAnalyzing}
-                    onClick={handleSubmitLocal}
-                    className={cn(
-                        "relative px-10 py-4 rounded-3xl font-bold text-xs uppercase tracking-widest transition-all duration-300 w-full max-w-sm",
-                        (institutionName && tutorName) && !isAnalyzing
-                            ? "bg-white/5 border border-white/10 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/30 shadow-lg shadow-emerald-500/5 hover:-translate-y-1"
-                            : "bg-white/5 border border-white/5 text-gray-600 cursor-not-allowed hidden"
-                    )}
-                >
-                    <div className="flex items-center justify-center gap-3">
-                        <FolderSync className="w-4 h-4" />
-                        TEST: Escanear carpeta '7 archivos'
-                    </div>
-                </button>
+                    <button
+                        disabled={(!institutionName || !tutorName) || isAnalyzing}
+                        onClick={handleSubmitLocal}
+                        className={cn(
+                            "relative px-8 py-4 rounded-3xl font-black text-sm uppercase tracking-[0.1em] transition-all duration-500 w-full max-w-sm",
+                            (institutionName && tutorName) && !isAnalyzing
+                                ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-2xl shadow-emerald-500/20 hover:scale-105 active:scale-95"
+                                : "bg-white/5 text-gray-600 cursor-not-allowed border border-white/5"
+                        )}
+                    >
+                        <div className="flex items-center justify-center gap-2">
+                            {isAnalyzing ? <Loader2 className="w-5 h-5 animate-spin" /> : <FolderSync className="w-5 h-5" />}
+                            Escanear los 7 Archivos "De Una"
+                        </div>
+                    </button>
+                </div>
 
                 {!isReady && !isAnalyzing && (
                     <p className="text-rose-500/60 text-xs font-bold uppercase tracking-widest animate-pulse flex items-center gap-2">
