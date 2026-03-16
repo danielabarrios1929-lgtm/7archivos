@@ -9,6 +9,10 @@ echo ===========================================
 echo Cargando motor local (Sin dependencias externas)...
 echo.
 
+:: Matar procesos anteriores de Node.js (Next dev) para liberar el puerto 3000
+echo Limpiando puertos en uso...
+taskkill /F /IM node.exe >nul 2>&1
+
 :: 1. Backend: Asegurar entorno virtual y dependencias
 echo [1/2] Configurando Backend (FastAPI + Groq)...
 cd backend
@@ -25,7 +29,7 @@ pip install python-docx pandas openpyxl Pillow --quiet
 
 :: Lanzar Backend en una ventana aparte
 echo Lanzando Servidor de Inteligencia Artificial...
-start "BACKEND - PTAFI AI" cmd /k "title BACKEND AI && cd backend && venv\Scripts\activate && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+start "BACKEND - PTAFI AI" cmd /k "title BACKEND AI && cd backend && venv\Scripts\activate && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
 :: 2. Frontend: Iniciar
 echo [2/2] Iniciando Interfaz de Usuario (Next.js)...
@@ -34,7 +38,7 @@ cd ptafi-frontend
 
 :: Verificar node_modules
 if not exist node_modules (
-    echo Instalando dependencias de interfaz (Esto puede tardar un poco)...
+    echo Instalando dependencias de interfaz ^(Esto puede tardar un poco^)...
     npm install
 )
 

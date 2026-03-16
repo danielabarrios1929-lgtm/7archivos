@@ -78,13 +78,13 @@ if "%TUTOR%"=="" set TUTOR=Tutor PTAFI
 :: ─── Enviar archivos al análisis ──────────────────────────────────
 echo.
 echo  [3/3] Enviando 7 archivos al motor de análisis IA...
-python auto_cargar_7archivos.py --institucion "%INSTITUCION%" --tutor "%TUTOR%"
+backend\venv\Scripts\python auto_cargar_7archivos.py --institucion "%INSTITUCION%" --tutor "%TUTOR%"
 goto fin
 
 :solo_listar
 echo.
 echo  Archivos que se procesarían:
-python auto_cargar_7archivos.py --solo-listar
+backend\venv\Scripts\python auto_cargar_7archivos.py --solo-listar
 goto fin
 
 :solo_backend
@@ -101,7 +101,7 @@ set /p INSTITUCION="  Nombre de la institución [Guaimaral]: "
 if "%INSTITUCION%"=="" set INSTITUCION=Institución Educativa Guaimaral
 set /p TUTOR="  Nombre del tutor [Tutor PTAFI]: "
 if "%TUTOR%"=="" set TUTOR=Tutor PTAFI
-python auto_cargar_7archivos.py --institucion "%INSTITUCION%" --tutor "%TUTOR%"
+backend\venv\Scripts\python auto_cargar_7archivos.py --institucion "%INSTITUCION%" --tutor "%TUTOR%"
 
 :fin
 echo.

@@ -274,6 +274,12 @@ def main():
         action='store_true',
         help='Solo listar archivos sin enviar al backend'
     )
+    parser.add_argument(
+        '--skip-confirm',
+        action='store_true',
+        help='Omitir confirmación (útil para automatización)'
+    )
+
     
     args = parser.parse_args()
     
@@ -304,19 +310,26 @@ def main():
         return
     
     # ── Confirmar envío ──────────────────────────────────────────────
-    print(color(f"\n📡 Este script enviará los {len(archivos)} archivos a:", BOLD))
-    print(color(f"   {args.backend}", AZUL))
-    print(color(f"   Institución: {args.institucion}", AZUL))
-    print(color(f"   Tutor:       {args.tutor}", AZUL))
-    
-    try:
-        respuesta = input(color("\n¿Continuar? [S/n]: ", BOLD)).strip().lower()
-        if respuesta in ['n', 'no']:
-            print(color("\n❌ Cancelado por el usuario.\n", AMARILLO))
+    if not args.skip_confirm:
+        print(color(f"\n📡 Este script enviará los {len(archivos)} archivos a:", BOLD))
+        print(color(f"   {args.backend}", AZUL))
+        print(color(f"   Institución: {args.institucion}", AZUL))
+        print(color(f"   Tutor:       {args.tutor}", AZUL))
+        
+        try:
+            respuesta = input(color("\n¿Continuar? [S/n]: ", BOLD)).strip().lower()
+            if respuesta in ['n', 'no']:
+                print(color("\n❌ Cancelado por el usuario.\n", AMARILLO))
+                return
+        except KeyboardInterrupt:
+            print(color("\n\n❌ Cancelado.\n", AMARILLO))
             return
-    except KeyboardInterrupt:
-        print(color("\n\n❌ Cancelado.\n", AMARILLO))
-        return
+        except EOFError:
+            print(color("\n⚠️  No se pudo leer la entrada (EOF). Usa --skip-confirm para automatizar.", AMARILLO))
+            return
+    else:
+        print(color(f"\n🚀 Modificando auditoría para {len(archivos)} archivos (Modo automático)...", VERDE))
+
     
     # ── Enviar al backend ────────────────────────────────────────────
     resultado = enviar_al_backend(

@@ -2,6 +2,7 @@ from groq import Groq
 import os
 import json
 import logging
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ class GroqService:
     def client(self):
         """Lazy initialization: crea el cliente solo cuando se necesita."""
         if self._client is None:
-            api_key = os.environ.get("GROQ_API_KEY", "")
+            api_key = settings.GROQ_API_KEY
             if not api_key:
                 raise Exception("GROQ_API_KEY no está configurada. Agrégala en Vercel → Settings → Environment Variables.")
             self._client = Groq(api_key=api_key)

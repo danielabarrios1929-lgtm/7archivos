@@ -6,7 +6,8 @@ import { Uploader } from '@/components/Uploader';
 import { MatrixSuprema } from '@/components/MatrixSuprema';
 import { Sparkles, Database, FileSearch, ShieldCheck, AlertCircle, BrainCircuit, Cpu, Layers, GitMerge, CheckCircle2 } from 'lucide-react';
 
-const API_URL = "/api/v1/analysis/process";
+const BACKEND_URL = "http://localhost:8000";
+const API_URL = `${BACKEND_URL}/api/v1/analysis/process`;
 
 
 const PROCESSING_PHASES = [
@@ -117,12 +118,19 @@ export default function Home() {
   const [analysisData, setAnalysisData] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return <div className="min-h-screen bg-[#020205]" />;
 
   const startAnalysis = async (formData: FormData, useLocalFolder: boolean = false) => {
     setIsAnalyzing(true);
     setError(null);
     try {
-      const endpoint = useLocalFolder ? "/api/v1/analysis/process-local-folder" : API_URL;
+      const endpoint = useLocalFolder ? `${BACKEND_URL}/api/v1/analysis/process-local-folder` : API_URL;
       const response = await fetch(endpoint, { method: 'POST', body: formData });
       if (!response.ok) {
         let msg = "Fallo crítico en el motor de auditoría.";
