@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from typing import List, Dict, Optional
 from app.services.processor import processor
 from app.services.ai_orchestrator import ai_orchestrator   # ← Orquestador Híbrido
@@ -72,13 +72,20 @@ async def process_analysis(
             "status": "success"
         }
 
-        # 6. Generar PDF (Base64)
+        # 6. Generar Documentos (PDF y DOCX)
         try:
             pdf_bytes = pdf_reporter.generate_pdf(response_data)
             response_data["pdf_base64"] = base64.b64encode(pdf_bytes).decode('utf-8')
         except Exception as pdf_err:
             logger.error(f"[API] Error generando PDF: {str(pdf_err)}")
             response_data["pdf_base64"] = None
+
+        try:
+            docx_bytes = pdf_reporter.generate_docx(response_data)
+            response_data["docx_base64"] = base64.b64encode(docx_bytes).decode('utf-8')
+        except Exception as docx_err:
+            logger.error(f"[API] Error generando DOCX: {str(docx_err)}")
+            response_data["docx_base64"] = None
 
         return response_data
 
@@ -162,12 +169,20 @@ async def process_local_folder(
             "status": "success"
         }
 
+        # 6. Generar Documentos (PDF y DOCX)
         try:
             pdf_bytes = pdf_reporter.generate_pdf(response_data)
             response_data["pdf_base64"] = base64.b64encode(pdf_bytes).decode('utf-8')
         except Exception as pdf_err:
             logger.error(f"[API] Error generando PDF: {str(pdf_err)}")
             response_data["pdf_base64"] = None
+
+        try:
+            docx_bytes = pdf_reporter.generate_docx(response_data)
+            response_data["docx_base64"] = base64.b64encode(docx_bytes).decode('utf-8')
+        except Exception as docx_err:
+            logger.error(f"[API] Error generando DOCX: {str(docx_err)}")
+            response_data["docx_base64"] = None
 
         return response_data
 

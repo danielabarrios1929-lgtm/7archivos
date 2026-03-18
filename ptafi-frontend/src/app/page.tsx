@@ -118,13 +118,6 @@ export default function Home() {
   const [analysisData, setAnalysisData] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) return <div className="min-h-screen bg-[#020205]" />;
 
   const startAnalysis = async (formData: FormData, useLocalFolder: boolean = false) => {
     setIsAnalyzing(true);
