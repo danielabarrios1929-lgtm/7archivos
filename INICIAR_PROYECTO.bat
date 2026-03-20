@@ -9,9 +9,9 @@ echo ===========================================
 echo Cargando motor local (Sin dependencias externas)...
 echo.
 
-:: Matar procesos anteriores de Node.js (Next dev) para liberar el puerto 3000
-echo Limpiando puertos en uso...
+echo Limpiando puertos en uso (3000 y 8000)...
 taskkill /F /IM node.exe >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr :8000 ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
 
 :: 1. Backend: Asegurar entorno virtual y dependencias
 echo [1/2] Configurando Backend (FastAPI + Groq)...
@@ -29,7 +29,7 @@ pip install python-docx pandas openpyxl Pillow --quiet
 
 :: Lanzar Backend en una ventana aparte
 echo Lanzando Servidor de Inteligencia Artificial...
-start "BACKEND - PTAFI AI" cmd /k "title BACKEND AI && cd backend && venv\Scripts\activate && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+start "BACKEND - PTAFI AI" cmd /k "title BACKEND AI && cd backend && venv\Scripts\activate && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
 
 :: 2. Frontend: Iniciar
 echo [2/2] Iniciando Interfaz de Usuario (Next.js)...

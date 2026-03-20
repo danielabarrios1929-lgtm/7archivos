@@ -1,4 +1,4 @@
-﻿"""
+"""
 DocumentProcessor — Extractor Premium de Texto Multi-Formato v3
 ===============================================================
 Mejoras v3:
@@ -381,13 +381,24 @@ class DocumentProcessor:
     def validate_integrity(documents: Dict[str, bytes]) -> List[str]:
         """
         Checklist de integridad opcional (no bloqueante).
+        Ahora busca si las palabras clave están contenidas en los nombres de archivo.
         """
         required = [
             "PEI", "MANUAL DE CONVIVENCIA", "PMI", "POA",
             "PFI", "SIEE", "LECTURA DE CONTEXTO"
         ]
-        present_docs = [name.upper() for name in documents.keys()]
-        return [doc for doc in required if doc not in present_docs]
+        present_files = [name.upper() for name in documents.keys()]
+        
+        missing = []
+        for req in required:
+            # Buscar si el término requerido está en alguno de los archivos cargados
+            if not any(req in filename for filename in present_files):
+                # Caso especial: SIEE puede ser solo SIE
+                if req == "SIEE" and any("SIE" in f for f in present_files):
+                    continue
+                missing.append(req)
+        
+        return missing
 
     def prepare_context_for_ai(self, documents: Dict[str, bytes]) -> str:
         """
