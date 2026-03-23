@@ -6,7 +6,7 @@ import { Uploader } from '@/components/Uploader';
 import { MatrixSuprema } from '@/components/MatrixSuprema';
 import { Sparkles, Database, FileSearch, ShieldCheck, AlertCircle, BrainCircuit, Cpu, Layers, GitMerge, CheckCircle2 } from 'lucide-react';
 
-const BACKEND_URL = "http://localhost:8000";
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const API_URL = `${BACKEND_URL}/api/v1/analysis/process`;
 
 
