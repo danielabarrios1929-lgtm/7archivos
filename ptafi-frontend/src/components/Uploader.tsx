@@ -121,22 +121,24 @@ export const Uploader = ({ onAnalysisStart, isAnalyzing }: UploaderProps) => {
                     </div>
                 </div>
 
-                <div className="pt-4 border-t border-white/5">
-                    <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4">Atajo: Carpeta Local</h4>
-                    <button
-                        onClick={handleSubmitLocal}
-                        disabled={!isReadyLocal || isAnalyzing}
-                        className={cn(
-                            "w-full py-4 rounded-2xl flex items-center justify-center gap-3 text-xs font-black uppercase tracking-widest transition-all",
-                            isReadyLocal && !isAnalyzing
-                                ? "bg-white/5 hover:bg-white/10 border border-white/10 text-white"
-                                : "bg-white/[0.02] text-gray-700 border border-transparent cursor-not-allowed"
-                        )}
-                    >
-                        <FolderSync className="w-4 h-4" />
-                        Cargar Auto de 7 archivos
-                    </button>
-                </div>
+                {process.env.NODE_ENV === "development" && (
+                    <div className="pt-4 border-t border-white/5">
+                        <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4">Atajo: Carpeta Local</h4>
+                        <button
+                            onClick={handleSubmitLocal}
+                            disabled={!isReadyLocal || isAnalyzing}
+                            className={cn(
+                                "w-full py-4 rounded-2xl flex items-center justify-center gap-3 text-xs font-black uppercase tracking-widest transition-all",
+                                isReadyLocal && !isAnalyzing
+                                    ? "bg-white/5 hover:bg-white/10 border border-white/10 text-white"
+                                    : "bg-white/[0.02] text-gray-700 border border-transparent cursor-not-allowed"
+                            )}
+                        >
+                            <FolderSync className="w-4 h-4" />
+                            Cargar Auto de 7 archivos
+                        </button>
+                    </div>
+                )}
             </motion.div>
 
             {/* Sección de Archivos Manuales */}
