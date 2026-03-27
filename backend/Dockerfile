@@ -19,8 +19,8 @@ COPY requirements.txt .
 # Instalar las librerías de Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar solo el contenido de backend al contenedor (desde el contexto raíz)
-COPY backend/ .
+# Copiar todo el contenido de la carpeta backend al contenedor
+COPY . .
 
 # Informar que la app corre en el puerto 8000
 EXPOSE 8000
