@@ -13,6 +13,6 @@ Pillow
 jinja2
 groq
 reportlab
-google-generativeai
+google-genai
 python-pptx
 requests

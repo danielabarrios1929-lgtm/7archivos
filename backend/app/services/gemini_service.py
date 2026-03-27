@@ -18,7 +18,8 @@ import logging
 import re
 import threading
 from typing import List, Optional
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from app.core.config import settings
 from app.services.groq_service import SYSTEM_PROMPT
 
@@ -42,25 +43,17 @@ def _get_api_keys() -> List[str]:
     return keys
 
 
-# ── Modelo por key ─────────────────────────────────────────────────────────────
-_model_cache: dict = {}
-_model_lock = threading.Lock()
+# ── Cliente por key ─────────────────────────────────────────────────────────────
+_client_cache: dict = {}
+_client_lock = threading.Lock()
 
-def _get_model_for_key(api_key: str):
-    """Crea (o reutiliza) un GenerativeModel para la key indicada."""
-    with _model_lock:
-        if api_key not in _model_cache:
-            genai.configure(api_key=api_key)
-            _model_cache[api_key] = genai.GenerativeModel(
-                model_name=GEMINI_MODEL,
-                generation_config=genai.GenerationConfig(
-                    temperature=0.1,
-                    max_output_tokens=8192,   # Aumentado para respuestas completas
-                ),
-                system_instruction=SYSTEM_PROMPT,
-            )
-            logger.info(f"[GEMINI] Modelo listo para key ...{api_key[-6:]}")
-        return _model_cache[api_key]
+def _get_client_for_key(api_key: str):
+    """Crea (o reutiliza) un cliente de genai para la key indicada."""
+    with _client_lock:
+        if api_key not in _client_cache:
+            _client_cache[api_key] = genai.Client(api_key=api_key)
+            logger.info(f"[GEMINI] Cliente listo para key ...{api_key[-6:]}")
+        return _client_cache[api_key]
 
 
 # ── Parser JSON Robusto ────────────────────────────────────────────────────────
@@ -165,20 +158,27 @@ async def _analyze_with_key(
         "La respuesta debe empezar con { y terminar con }.\n"
         "Incluye EXACTAMENTE 6 items en matrix y EXACTAMENTE 5 items en quality_report.\n"
         "Usa textos BREVES (max 150 palabras por hallazgo/analysis) para no truncar la respuesta.\n\n"
-        f"FRAGMENTO {worker_id}:\n{text_portion}"
     )
 
     for attempt in range(1, retries + 1):
         try:
             logger.info(
-                f"[WORKER-{worker_id}] Llamando Gemini con key ...{api_key[-6:]} "
+                f"[WORKER-{worker_id}] Llamando Gemini (New SDK) con key ...{api_key[-6:]} "
                 f"({len(text_portion):,} chars, intento {attempt})"
             )
-            # Reconfigure for this specific key before each call
-            genai.configure(api_key=api_key)
+            
+            # El nuevo SDK simplifica la llamada
             response = await loop.run_in_executor(
                 None,
-                lambda p=prompt: model.generate_content(p)
+                lambda p=prompt: client.models.generate_content(
+                    model=GEMINI_MODEL,
+                    contents=p + f"FRAGMENTO {worker_id}:\n{text_portion}",
+                    config=types.GenerateContentConfig(
+                        system_instruction=SYSTEM_PROMPT,
+                        temperature=0.1,
+                        max_output_tokens=8192,
+                    )
+                )
             )
             result = _parse_json(response.text)
 
