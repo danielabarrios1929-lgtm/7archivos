@@ -6,7 +6,13 @@ import { Uploader } from '@/components/Uploader';
 import { MatrixSuprema } from '@/components/MatrixSuprema';
 import { Sparkles, Database, FileSearch, ShieldCheck, AlertCircle, BrainCircuit, Cpu, Layers, GitMerge, CheckCircle2 } from 'lucide-react';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "");
+const getBaseUrl = () => {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (envUrl) return envUrl.endsWith('/') ? envUrl.slice(0, -1) : envUrl;
+  return process.env.NODE_ENV === "development" ? "http://localhost:8000" : "";
+};
+
+const BACKEND_URL = getBaseUrl();
 const API_URL = `${BACKEND_URL}/api/v1/analysis/process`;
 
 
@@ -129,6 +135,7 @@ export default function Home() {
     setError(null);
     try {
       const endpoint = useLocalFolder ? `${BACKEND_URL}/api/v1/analysis/process-local-folder` : API_URL;
+      console.log("🚀 Enviando auditoría a:", endpoint);
       const response = await fetch(endpoint, { method: 'POST', body: formData });
       if (!response.ok) {
         let msg = "Fallo crítico en el motor de auditoría.";
