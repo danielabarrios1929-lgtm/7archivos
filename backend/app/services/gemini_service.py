@@ -149,7 +149,7 @@ async def _analyze_with_key(
     Analiza una porción del texto con una key específica de Gemini.
     Reintenta hasta `retries` veces con espera exponencial ante error 429.
     """
-    model = _get_model_for_key(api_key)
+    client = _get_client_for_key(api_key)
     loop = asyncio.get_event_loop()
 
     prompt = (
@@ -170,7 +170,7 @@ async def _analyze_with_key(
             # El nuevo SDK simplifica la llamada
             response = await loop.run_in_executor(
                 None,
-                lambda p=prompt: client.models.generate_content(
+                lambda p=prompt, c=client: c.models.generate_content(
                     model=GEMINI_MODEL,
                     contents=p + f"FRAGMENTO {worker_id}:\n{text_portion}",
                     config=types.GenerateContentConfig(
