@@ -13,14 +13,14 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar el archivo de dependencias
+# Copiar el archivo de dependencias (usamos el de la raíz que es idéntico)
 COPY requirements.txt .
 
 # Instalar las librerías de Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar todo el contenido de la carpeta backend al contenedor
-COPY . .
+# Copiar el contenido de la carpeta backend al contenedor (desde el contexto raíz)
+COPY backend/ .
 
 # Informar que la app corre en el puerto 8000
 EXPOSE 8000
