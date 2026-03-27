@@ -25,5 +25,8 @@ COPY . .
 # Informar que la app corre en el puerto 8000
 EXPOSE 8000
 
-# Comando para iniciar FastAPI con Uvicorn
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Asegurar que el directorio actual esté en el path de Python
+ENV PYTHONPATH=/app
+
+# Comando para iniciar FastAPI con Uvicorn de forma más robusta
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
